@@ -1,8 +1,8 @@
 # USRP B210 Burst TX/RX Monitor
 
 TX0 → 30 dB attenuator → RX1 (RX2 port) loopback tester. Cycles through
-2.4 / 5.1 / 5.8 GHz, transmitting a 10 kHz baseband tone for 100 ms at
-each band, followed by 100 ms of silence during which it retunes both
+2.4 / 5.1 / 5.8 GHz, transmitting a 10 kHz baseband tone for 10 ms at
+each band, followed by 10 ms of silence during which it retunes both
 chains and verifies LO lock before the next burst. A live 2×2 window shows
 TX IQ waveform, RX IQ waveform, TX FFT, and RX FFT.
 
@@ -86,7 +86,7 @@ isn't flat across 2.4–5.8 GHz.
 
 - **Timing**: burst cadence is anchored to the USRP's own clock
   (`uhd::time_spec_t`), not host `sleep()` — see
-  `BurstController::control_loop()`. This is what keeps the 100ms/100ms cadence
+  `BurstController::control_loop()`. This is what keeps the 10ms/10ms cadence
   from drifting over a long run.
 - **Threading**: exactly two worker threads —
   `BurstController::control_loop` (all tuning calls + TX send()) and

@@ -71,7 +71,7 @@ bool UsrpManager::check_tx_lo_locked(double timeout_s)
             // treat absence of the sensor as "can't verify, proceed".
             return true;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
     return false;
 }
@@ -88,7 +88,7 @@ bool UsrpManager::check_rx_lo_locked(double timeout_s)
         } catch (const uhd::lookup_error&) {
             return true;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
     return false;
 }

@@ -3,12 +3,12 @@
 // Core state machine:
 //
 //   for each band in {2.4G, 5.1G, 5.8G}:
-//       TX 10kHz tone burst for 100ms (deterministically time-stamped)
-//       100ms silence:
+//       TX 10kHz tone burst for 10ms  (deterministically time-stamped)
+//       10ms silence:
 //           - retune TX+RX to next band, verify LO lock
 //           - drain TX async error messages from the burst just finished
 //           - run any user-supplied "other tasks" hook
-//           - hold the line until exactly 100ms of silence has elapsed,
+//           - hold the line until exactly 10ms of silence has elapsed,
 //             measured off the USRP's own clock (not host sleep()), so
 //             timing does not drift over long runs
 //
@@ -43,8 +43,8 @@
 class BurstController : public IMonitorStatus
 {
 public:
-    static constexpr double kBurstDurationS = 0.1;
-    static constexpr double kSilenceDurationS = 0.1;
+    static constexpr double kBurstDurationS = 0.01;
+    static constexpr double kSilenceDurationS = 0.01;
     static constexpr double kToneFreqHz = 10000.0;
 
     BurstController(UsrpManager& usrp, std::vector<BandGainConfig> bands,
@@ -54,7 +54,7 @@ public:
     // and before waiting out the remainder of the gap. Use this to plug in
     // whatever "other tasks that might interfere with the next burst" your
     // setup needs (e.g. quiescing another radio, checking external state).
-    // Runs on the control thread - keep it well under 100ms.
+    // Runs on the control thread - keep it well under 10ms.
     void set_interference_mitigation_hook(std::function<void()> hook);
 
     void set_net_sender(std::shared_ptr<IqTcpSender> sender);

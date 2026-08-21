@@ -48,7 +48,7 @@ public:
     // timeout - caller should treat this as a fault, not transmit, and
     // retry/log.
     bool retune(double freq_hz, double tx_gain_db, double rx_gain_db,
-                double lock_timeout_s = 0.05);
+                double lock_timeout_s = 0.005);
 
     uhd::tx_streamer::sptr tx_streamer() { return tx_streamer_; }
     uhd::rx_streamer::sptr rx_streamer() { return rx_streamer_; }

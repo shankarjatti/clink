@@ -51,10 +51,10 @@ before trusting it on real hardware.
   busy-wait for precise alignment — a ~50 ms lead-in is given before the
   very first burst only, to give the device time to arm.
 - **Silence period does real work**, not a fixed sleep: retune both
-  chains, poll LO lock (with a 50ms timeout, not indefinitely), drain queued TX
+  chains, poll LO lock (with a 5ms timeout, not indefinitely), drain queued TX
   async error messages from the burst just finished, run the
-  user-pluggable interference-mitigation hook, *then* busy-wait (2 ms
-  poll) against device time for whatever's left of the ~100 ms gap. Under
+  user-pluggable interference-mitigation hook, *then* busy-wait (250 µs
+  poll) against device time for whatever's left of the ~10 ms gap. Under
   normal conditions the actual work finishes in a few ms and the remainder
   is the poll-wait — this is intentional, it's the safety margin, not wasted time.
 - **"Other tasks that might interfere with the next burst"** was
