@@ -1,0 +1,76 @@
+cmake_minimum_required(VERSION 3.16)
+project(usrp_burst_gui CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+find_package(UHD REQUIRED)
+find_package(Threads REQUIRED)
+find_package(OpenGL REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GLFW REQUIRED glfw3)
+pkg_check_modules(FFTW REQUIRED fftw3f)
+if(NOT FFTW_FOUND)
+    # Some distros only ship the double-precision fftw3.pc; fall back and
+    # link fftw3f by name (header fftw3.h covers both via fftwf_* symbols
+    # once linked against libfftw3f).
+    pkg_check_modules(FFTW REQUIRED fftw3)
+endif()
+
+set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
+set(IMPLOT_DIR ${CMAKE_SOURCE_DIR}/third_party/implot)
+
+add_library(imgui STATIC
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui PUBLIC
+    ${IMGUI_DIR}
+    ${IMGUI_DIR}/backends
+    ${GLFW_INCLUDE_DIRS}
+)
+target_link_libraries(imgui PUBLIC ${GLFW_LIBRARIES} OpenGL::GL)
+target_compile_options(imgui PUBLIC ${GLFW_CFLAGS_OTHER})
+
+add_library(implot STATIC
+    ${IMPLOT_DIR}/implot.cpp
+    ${IMPLOT_DIR}/implot_items.cpp
+    ${IMPLOT_DIR}/implot_demo.cpp
+)
+target_include_directories(implot PUBLIC ${IMPLOT_DIR})
+target_link_libraries(implot PUBLIC imgui)
+
+add_executable(usrp_burst_gui
+    src/main.cpp
+    src/usrp_manager.cpp
+    src/burst_controller.cpp
+    src/fft_processor.cpp
+    src/gui.cpp
+)
+
+target_include_directories(usrp_burst_gui PRIVATE
+    ${UHD_INCLUDE_DIRS}
+    ${FFTW_INCLUDE_DIRS}
+)
+
+target_link_directories(usrp_burst_gui PRIVATE ${FFTW_LIBRARY_DIRS})
+
+target_link_libraries(usrp_burst_gui PRIVATE
+    imgui
+    implot
+    ${UHD_LIBRARIES}
+    fftw3f
+    Threads::Threads
+)
+
+target_compile_options(usrp_burst_gui PRIVATE -Wall -Wextra -O2)

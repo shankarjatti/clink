@@ -1,0 +1,17 @@
+# Build directory
+build/
+bin/
+
+# Third party sources (cloned via git as per README)
+third_party/
+
+# Compiled object files and binaries
+*.o
+*.a
+*.so
+*.out
+
+# IDE and OS metadata
+.vscode/
+.idea/
+.DS_Store
