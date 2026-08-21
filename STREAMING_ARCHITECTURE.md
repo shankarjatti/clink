@@ -10,8 +10,8 @@ This document tracks all critical system parameters, network protocol layouts, R
 |---|---|---|
 | **Sample Rate** | `2.0 MS/s` (2.0 MHz BW) | Constant across all 3 nodes |
 | **Tone Frequency** | `10.0 kHz` baseband | Divided evenly by sample rate (200 samples/cycle) |
-| **Burst Duration** | `1.0 s` | Hardware-timed via UHD `time_spec` |
-| **Silence Duration** | `1.0 s` | Paced with zero-amplitude samples (`0.0f, 0.0f`) |
+| **Burst Duration** | `100 ms` (`0.1 s`) | Hardware-timed via UHD `time_spec` |
+| **Silence Duration** | `100 ms` (`0.1 s`) | Paced with zero-amplitude samples (`0.0f, 0.0f`) |
 | **IQ Format (Wire)** | `sc16` (signed 16-bit) | Interleaved `int16_t I`, `int16_t Q` (4 bytes/sample) |
 | **Throughput** | `8.0 MB/s` (64.0 Mbps) | Per channel ($16\text{ MB/s}$ combined dual-channel) |
 | **Default TX Gain** | `65.0 dB` (Constant) | Constant across 2.4 GHz, 5.1 GHz, 5.8 GHz |

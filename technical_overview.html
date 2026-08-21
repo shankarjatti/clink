@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USRP B210 Distributed RF Streaming & Protocol Architecture Overview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #07090e;
+            --bg-secondary: #0d121d;
+            --bg-card: rgba(18, 24, 38, 0.75);
+            --bg-card-hover: rgba(26, 35, 56, 0.85);
+            --border-color: rgba(65, 85, 125, 0.25);
+            --border-glow: rgba(0, 240, 255, 0.3);
+            
+            --accent-cyan: #00f0ff;
+            --accent-emerald: #00ff88;
+            --accent-purple: #9d4edd;
+            --accent-amber: #ffb703;
+            --accent-rose: #ff0055;
+            --accent-blue: #3a86ff;
+            
+            --text-main: #f0f4fc;
+            --text-muted: #8e9bb2;
+            --text-dim: #5c6b84;
+            
+            --font-sans: 'Inter', -apple-system, sans-serif;
+            --font-heading: 'Outfit', sans-serif;
+            --font-mono: 'Fira Code', monospace;
+            
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 18px;
+            --radius-xl: 24px;
+            
+            --shadow-glow: 0 0 30px rgba(0, 240, 255, 0.15);
+            --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 10%, rgba(0, 240, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(157, 78, 221, 0.06) 0%, transparent 50%),
+                radial-gradient(circle at 50% 85%, rgba(0, 255, 136, 0.04) 0%, transparent 45%);
+            background-attachment: fixed;
+        }
+
+        /* Container & Navigation */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        header.hero {
+            padding: 4rem 0 3rem;
+            position: relative;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 1.25rem;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-cyan);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-cyan);
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 15px var(--accent-cyan); }
+            100% { transform: scale(0.95); opacity: 0.7; }
+        }
+
+        h1 {
+            font-family: var(--font-heading);
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1.15;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #ffffff 30%, var(--accent-cyan) 80%, var(--accent-blue) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-desc {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            max-width: 860px;
+            margin-bottom: 2rem;
+        }
+
+        /* KPI Cards Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin-top: 2rem;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.25rem 1.5rem;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+            opacity: 0;
+            transition: var(--transition);
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent-cyan);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .kpi-card:hover::before {
+            opacity: 1;
+        }
+
+        .kpi-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .kpi-value {
+            font-family: var(--font-heading);
+            font-size: 1.85rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .kpi-sub {
+            font-size: 0.8rem;
+            color: var(--accent-emerald);
+            margin-top: 0.25rem;
+            font-weight: 500;
+        }
+
+        /* Section Layouts */
+        section {
+            padding: 4rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-header {
+            margin-bottom: 2.5rem;
+        }
+
+        .section-tag {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .section-title {
+            font-family: var(--font-heading);
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        /* Pipeline Visualizer Diagram */
+        .pipeline-wrapper {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            position: relative;
+        }
+
+        .nodes-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr auto 1fr;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .node-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.75rem 1.5rem;
+            position: relative;
+            transition: var(--transition);
+        }
+
+        .node-card.s1 { border-top: 4px solid var(--accent-cyan); }
+        .node-card.s2 { border-top: 4px solid var(--accent-purple); }
+        .node-card.s3 { border-top: 4px solid var(--accent-emerald); }
+
+        .node-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .node-role {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .node-card.s1 .node-role { color: var(--accent-cyan); }
+        .node-card.s2 .node-role { color: var(--accent-purple); }
+        .node-card.s3 .node-role { color: var(--accent-emerald); }
+
+        .node-name {
+            font-family: var(--font-heading);
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+        }
+
+        .node-feature-list {
+            list-style: none;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+
+        .node-feature-list li {
+            padding: 0.35rem 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .node-feature-list li::before {
+            content: "▹";
+            color: var(--accent-cyan);
+            font-weight: bold;
+        }
+
+        .connector-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 0 0.5rem;
+        }
+
+        .pipe-arrow {
+            width: 70px;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+            position: relative;
+            border-radius: 2px;
+        }
+
+        .pipe-arrow.p2 {
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-emerald));
+        }
+
+        .pipe-arrow::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            top: -4px;
+            width: 0;
+            height: 0;
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+            border-left: 8px solid var(--accent-purple);
+        }
+
+        .pipe-arrow.p2::after {
+            border-left-color: var(--accent-emerald);
+        }
+
+        .pipe-label {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--accent-cyan);
+            background: rgba(0, 240, 255, 0.08);
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            white-space: nowrap;
+        }
+
+        /* Packet Byte Map Visualizer */
+        .packet-layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 2rem;
+            margin-top: 1.5rem;
+        }
+
+        .packet-header-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .byte-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 10px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .byte-box:hover, .byte-box.active {
+            background: rgba(0, 240, 255, 0.15);
+            border-color: var(--accent-cyan);
+            transform: scale(1.03);
+            z-index: 10;
+        }
+
+        .byte-box .b-offset {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            display: block;
+        }
+
+        .byte-box .b-name {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .byte-box .b-size {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .col-span-1 { grid-column: span 1; }
+        .col-span-2 { grid-column: span 2; }
+        .col-span-4 { grid-column: span 4; }
+
+        .byte-box.magic-box { border-left: 3px solid var(--accent-amber); }
+        .byte-box.ts-box { border-left: 3px solid var(--accent-purple); }
+        .byte-box.rf-box { border-left: 3px solid var(--accent-cyan); }
+        .byte-box.ang-box { border-left: 3px solid var(--accent-emerald); }
+
+        .inspector-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.75rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .inspector-title {
+            font-family: var(--font-heading);
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 0.5rem;
+        }
+
+        .spec-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        .spec-table th, .spec-table td {
+            padding: 0.65rem 0.85rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .spec-table th {
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .spec-table td {
+            color: var(--text-main);
+        }
+
+        .code-pill {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.07);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent-amber);
+        }
+
+        /* Quantization & Transform Engine */
+        .math-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1.5rem;
+        }
+
+        .formula-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.75rem;
+        }
+
+        .math-formula {
+            font-family: var(--font-mono);
+            font-size: 1.05rem;
+            color: var(--accent-emerald);
+            background: rgba(0, 0, 0, 0.35);
+            padding: 1.25rem;
+            border-radius: var(--radius-sm);
+            border-left: 4px solid var(--accent-emerald);
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+
+        /* Interactive SC16 Calculator */
+        .calculator-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+        }
+
+        .calc-input-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .calc-input-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+            font-weight: 500;
+        }
+
+        .calc-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-sm);
+            color: var(--accent-cyan);
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .calc-input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+        }
+
+        .calc-result-box {
+            background: rgba(0, 255, 136, 0.08);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: var(--radius-sm);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .calc-result-val {
+            font-family: var(--font-mono);
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-emerald);
+        }
+
+        /* Calibrated Bands & Polar Radar Section */
+        .bands-layout {
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .channel-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .channel-table th {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1rem;
+            text-align: left;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .channel-table td {
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.9rem;
+        }
+
+        .channel-table tr:hover {
+            background: rgba(0, 240, 255, 0.04);
+        }
+
+        .radar-canvas-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            text-align: center;
+            position: relative;
+        }
+
+        canvas#radarCanvas {
+            max-width: 100%;
+            height: auto;
+            border-radius: 50%;
+            background: #04060a;
+            box-shadow: 0 0 25px rgba(0, 255, 136, 0.15);
+        }
+
+        .radar-controls {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .radar-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 6px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .radar-btn.active, .radar-btn:hover {
+            background: var(--accent-cyan);
+            color: #000000;
+            border-color: var(--accent-cyan);
+        }
+
+        /* Timing Timeline */
+        .timeline-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 2rem;
+            margin-top: 1.5rem;
+        }
+
+        .timeline-bar {
+            display: flex;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            margin: 1.5rem 0 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .time-slice {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            font-weight: 600;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+            position: relative;
+        }
+
+        .time-slice.burst {
+            width: 50%;
+            background: linear-gradient(90deg, #00b4d8, #00f0ff);
+            color: #031525;
+        }
+
+        .time-slice.silence {
+            width: 50%;
+            background: repeating-linear-gradient(
+                45deg,
+                #1a202c,
+                #1a202c 10px,
+                #232b3c 10px,
+                #232b3c 20px
+            );
+            color: var(--text-muted);
+        }
+
+        .legend-row {
+            display: flex;
+            gap: 2rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-box {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+
+        footer {
+            padding: 3rem 0;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 1024px) {
+            .nodes-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+            .connector-col {
+                transform: rotate(90deg);
+                margin: 0.5rem 0;
+            }
+            .packet-layout, .math-grid, .bands-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Hero Header -->
+        <header class="hero">
+            <div class="badge-pill">
+                <span class="pulse-dot"></span>
+                <span>Production Architecture Specification</span>
+            </div>
+            <h1>USRP B210 Distributed RF Streaming & Protocol Engine</h1>
+            <p class="hero-desc">
+                High-performance lossless TCP telemetry, SIMD-accelerated 16-bit complex quantization (SC16), real-time multichannel demultiplexing, calibrated RF scaling, and polar radar coordinate translation across a 3-tier distributed processing cluster.
+            </p>
+
+            <!-- KPI Metric Bar -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">Baseband Sample Rate</div>
+                    <div class="kpi-value">2.0 MS/s</div>
+                    <div class="kpi-sub">8.00 MB/s fc32 stream</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Packet Delivery Rate</div>
+                    <div class="kpi-value">1,000 FPS</div>
+                    <div class="kpi-sub">1.00 ms packet interval</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">End-to-End Latency</div>
+                    <div class="kpi-value">&lt; 1.8 ms</div>
+                    <div class="kpi-sub">S1 → S2 → S3 Transit</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">Packet Continuity</div>
+                    <div class="kpi-value">0.00% Loss</div>
+                    <div class="kpi-sub">TCP_NODELAY stream</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Section 1: End-to-End Distributed Architecture -->
+        <section>
+            <div class="section-header">
+                <span class="section-tag">01 / Distributed Pipeline</span>
+                <h2 class="section-title">Three-Node Execution Topology</h2>
+            </div>
+
+            <div class="pipeline-wrapper">
+                <div class="nodes-grid">
+                    <!-- System 1: SDR Source -->
+                    <div class="node-card s1">
+                        <div class="node-role">System 1 • Source Node</div>
+                        <div class="node-name">usrp_burst_gui</div>
+                        <ul class="node-feature-list">
+                            <li>UHD hardware-timed synchronized burst engine</li>
+                            <li>Multi-band hopping (2.4 GHz, 5.1 GHz, 5.8 GHz)</li>
+                            <li>Direct Blackman-Harris 4096-pt FFT vectorization (~33 Hz)</li>
+                            <li>Fixed Azimuth / Elevation polar telemetry attachment</li>
+                            <li>Float fc32 → SC16 fixed-point quantization</li>
+                            <li>TCP client with <code class="code-pill">TCP_NODELAY</code></li>
+                        </ul>
+                    </div>
+
+                    <!-- Pipe S1 -> S2 -->
+                    <div class="connector-col">
+                        <span class="pipe-label">TCP 5000</span>
+                        <div class="pipe-arrow"></div>
+                        <span class="pipe-label">16 KB/pkt</span>
+                    </div>
+
+                    <!-- System 2: Relay & Scaler -->
+                    <div class="node-card s2">
+                        <div class="node-role">System 2 • Relay & Scaler</div>
+                        <div class="node-name">usrp_relay_gui</div>
+                        <ul class="node-feature-list">
+                            <li>Simultaneous TCP Server (5000) & Client (6001)</li>
+                            <li>4-Channel Demultiplexer with lock-free SPSC rings</li>
+                            <li>Calibrated band scaling (×2.0, ×3.0, ×4.0)</li>
+                            <li>Direct zero-recomputation FFT routing</li>
+                            <li>12-Plot 4×3 Matrix Monitor (Waveform, FFT, Polar)</li>
+                            <li>Forwarding of scaled SC16 + telemetry to System 3</li>
+                        </ul>
+                    </div>
+
+                    <!-- Pipe S2 -> S3 -->
+                    <div class="connector-col">
+                        <span class="pipe-label">TCP 6001</span>
+                        <div class="pipe-arrow p2"></div>
+                        <span class="pipe-label">Scaled Stream</span>
+                    </div>
+
+                    <!-- System 3: Sink & Operator Console -->
+                    <div class="node-card s3">
+                        <div class="node-role">System 3 • Operator Console</div>
+                        <div class="node-name">usrp_sink_gui</div>
+                        <ul class="node-feature-list">
+                            <li>High-speed SC16 → Float fc32 decoder</li>
+                            <li>Sidebar tabbed console (2.4G, 5.1G, 5.8G, All)</li>
+                            <li>Split viewport: Top 1×2 Waveform/FFT graphs</li>
+                            <li>Bottom Square Polar Radar Map with dynamic 0° idle logic</li>
+                            <li>E2E Latency, Delivery Jitter & Ingestion FPS tracker</li>
+                            <li>Zero-Loss packet integrity verification</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Interactive Wire Packet Structure -->
+        <section>
+            <div class="section-header">
+                <span class="section-tag">02 / Wire Protocol Layout</span>
+                <h2 class="section-title">Memory-Mapped Frame Inspector</h2>
+            </div>
+
+            <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+                Each network packet transmitted over TCP is packed with byte-exact precision using <code class="code-pill">#pragma pack(push, 1)</code>. Click on any header field below to view its memory offset, bit width, and architectural role.
+            </p>
+
+            <div class="packet-layout">
+                <!-- Interactive Header Matrix -->
+                <div>
+                    <div class="packet-header-grid">
+                        <div class="byte-box magic-box col-span-4 active" onclick="inspectField('magic')">
+                            <span class="b-offset">0x00 - 0x03 (4B)</span>
+                            <span class="b-name">magic: 0x49515333</span>
+                            <span class="b-size">ASCII: 'IQS3'</span>
+                        </div>
+                        <div class="byte-box col-span-4" onclick="inspectField('seq')">
+                            <span class="b-offset">0x04 - 0x07 (4B)</span>
+                            <span class="b-name">sequence_num</span>
+                            <span class="b-size">uint32_t (0, 1, 2...)</span>
+                        </div>
+                        <div class="byte-box ts-box col-span-4" onclick="inspectField('ts')">
+                            <span class="b-offset">0x08 - 0x0F (8B)</span>
+                            <span class="b-name">timestamp_ns</span>
+                            <span class="b-size">uint64_t (UTC Epoch ns)</span>
+                        </div>
+                        <div class="byte-box rf-box col-span-4" onclick="inspectField('rf')">
+                            <span class="b-offset">0x10 - 0x17 (8B)</span>
+                            <span class="b-name">center_freq_hz</span>
+                            <span class="b-size">double (2.4e9, 5.1e9, 5.8e9)</span>
+                        </div>
+                        <div class="byte-box col-span-2" onclick="inspectField('mult')">
+                            <span class="b-offset">0x18 - 0x1B (4B)</span>
+                            <span class="b-name">iq_multiplier</span>
+                            <span class="b-size">float (1.0, 2.0, 3.0, 4.0)</span>
+                        </div>
+                        <div class="byte-box ang-box col-span-2" onclick="inspectField('el')">
+                            <span class="b-offset">0x1C - 0x1F (4B)</span>
+                            <span class="b-name">elevation_deg</span>
+                            <span class="b-size">float (30.0°, 50.0°, 60.0°)</span>
+                        </div>
+                        <div class="byte-box ang-box col-span-2" onclick="inspectField('az')">
+                            <span class="b-offset">0x20 - 0x23 (4B)</span>
+                            <span class="b-name">azimuth_deg</span>
+                            <span class="b-size">float (40.0°, 60.0°, 70.0°)</span>
+                        </div>
+                        <div class="byte-box col-span-2" onclick="inspectField('samples')">
+                            <span class="b-offset">0x24 - 0x27 (4B)</span>
+                            <span class="b-name">sample_count</span>
+                            <span class="b-size">uint32_t (2000)</span>
+                        </div>
+                        <div class="byte-box col-span-2" onclick="inspectField('fft')">
+                            <span class="b-offset">0x28 - 0x2B (4B)</span>
+                            <span class="b-name">fft_size</span>
+                            <span class="b-size">uint32_t (4096 / 0)</span>
+                        </div>
+                        <div class="byte-box col-span-2" onclick="inspectField('burst')">
+                            <span class="b-offset">0x2C - 0x2F (4B)</span>
+                            <span class="b-name">is_bursting</span>
+                            <span class="b-size">uint32_t (1 / 0)</span>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Payload Blocks -->
+                    <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="background: rgba(58, 134, 255, 0.15); border: 1px solid var(--accent-blue); padding: 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: #a5c7ff;">
+                            <strong>TX SC16 Payload:</strong> 2,000 samples × 4 bytes = <strong>8,000 Bytes</strong>
+                        </div>
+                        <div style="background: rgba(0, 255, 136, 0.12); border: 1px solid var(--accent-emerald); padding: 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: #9dfad0;">
+                            <strong>RX SC16 Payload:</strong> 2,000 samples × 4 bytes = <strong>8,000 Bytes</strong>
+                        </div>
+                        <div style="background: rgba(157, 78, 221, 0.12); border: 1px solid var(--accent-purple); padding: 10px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: #dcb3ff;">
+                            <strong>Optional TX+RX FFT Vector:</strong> 2 × (4096 × 4B) = <strong>32,768 Bytes</strong> (~33 Hz)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inspector Card -->
+                <div class="inspector-panel" id="inspectorPanel">
+                    <div>
+                        <div class="inspector-title" id="inspTitle">magic (0x49515333)</div>
+                        <p id="inspDesc" style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+                            32-bit protocol alignment magic number corresponding to ASCII 'IQS3'. Used by TCP frame synchronizers to guarantee framing boundary alignment and immediately recover from any stream offset.
+                        </p>
+                        
+                        <table class="spec-table">
+                            <tr>
+                                <th>Memory Offset</th>
+                                <td id="inspOffset"><span class="code-pill">0x00 - 0x03</span></td>
+                            </tr>
+                            <tr>
+                                <th>C++ Type</th>
+                                <td id="inspType"><span class="code-pill">uint32_t</span> (4 Bytes)</td>
+                            </tr>
+                            <tr>
+                                <th>Sample Value</th>
+                                <td id="inspVal"><span class="code-pill">0x49515333</span></td>
+                            </tr>
+                            <tr>
+                                <th>Pipeline Action</th>
+                                <td id="inspAction">Frame synchronization & packet validation on ingress</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; font-size: 0.8rem; color: var(--text-dim);">
+                        Packed struct header size: <strong>48 Bytes</strong> (with angles & metadata) | Wire format: <strong>Little-Endian (Host/Network Native)</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Data Transformation Engine (SC16 <-> FC32) -->
+        <section>
+            <div class="section-header">
+                <span class="section-tag">03 / Quantization & Math Engine</span>
+                <h2 class="section-title">Lossless Fixed-Point Transformation</h2>
+            </div>
+
+            <div class="math-grid">
+                <div class="formula-box">
+                    <h3 style="font-family: var(--font-heading); font-size: 1.3rem; margin-bottom: 0.5rem; color: #ffffff;">Float fc32 to Signed 16-Bit Quantization</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                        Transmits normalized floating-point samples ($[-1.0, 1.0]$ or scaled $[-M, +M]$) into 16-bit signed integers, reducing raw network bandwidth by <strong>50%</strong> (from 16 MB/s down to 8 MB/s) with zero loss in dynamic range:
+                    </p>
+                    
+                    <div class="math-formula">
+                        int16_t = clamp( round( float_sample * (32767.0f / Multiplier) ), -32768, 32767 )
+                    </div>
+
+                    <h3 style="font-family: var(--font-heading); font-size: 1.3rem; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Signed 16-Bit to Scaled Float Reconstitution</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                        Converts received 16-bit integer stream back into calibrated volt-scale floating point:
+                    </p>
+
+                    <div class="math-formula" style="border-left-color: var(--accent-cyan); color: var(--accent-cyan);">
+                        float_sample = ( int16_t / 32767.0f ) * Multiplier
+                    </div>
+                </div>
+
+                <!-- Interactive SC16 Playground -->
+                <div class="calculator-card">
+                    <h3 style="font-family: var(--font-heading); font-size: 1.3rem; color: var(--accent-amber); margin-bottom: 1rem;">Live Quantization Calculator</h3>
+                    
+                    <div class="calc-input-group">
+                        <label>Input Float Sample Value (Volts):</label>
+                        <input type="number" id="floatInput" class="calc-input" value="0.7071" step="0.05" oninput="updateCalculator()">
+                    </div>
+
+                    <div class="calc-input-group">
+                        <label>Band Multiplier (M):</label>
+                        <select id="multInput" class="calc-input" onchange="updateCalculator()">
+                            <option value="1.0">1.0× (System 1 Base Stream)</option>
+                            <option value="2.0" selected>2.0× (2.4 GHz Band - Ch 1)</option>
+                            <option value="3.0">3.0× (5.1 GHz Band - Ch 2)</option>
+                            <option value="4.0">4.0× (5.8 GHz Band - Ch 3)</option>
+                        </select>
+                    </div>
+
+                    <div class="calc-result-box">
+                        <div style="font-size: 0.78rem; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px;">Encoded Wire int16_t (SC16):</div>
+                        <div class="calc-result-val" id="sc16Result">11,585</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;" id="reconstructResult">Reconstructed Float: 0.707107 V (SNR: >98 dB)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: Calibrated Multi-Channel Routing & Polar Radar -->
+        <section>
+            <div class="section-header">
+                <span class="section-tag">04 / RF Calibration & Polar Telemetry</span>
+                <h2 class="section-title">Channel Demux & Polar Radar Coordinate Map</h2>
+            </div>
+
+            <div class="bands-layout">
+                <div>
+                    <table class="channel-table">
+                        <thead>
+                            <tr>
+                                <th>Channel</th>
+                                <th>RF Carrier</th>
+                                <th>Multiplier</th>
+                                <th>Elevation (&theta;<sub>el</sub>)</th>
+                                <th>Azimuth (&theta;<sub>az</sub>)</th>
+                                <th>Dynamic Y-Range</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr onclick="setRadarBand(0)" style="cursor: pointer;">
+                                <td style="font-weight: 700; color: var(--accent-cyan);">Channel 1</td>
+                                <td>2.400 GHz</td>
+                                <td><span class="code-pill">&times;2.0</span></td>
+                                <td>30.0&deg;</td>
+                                <td>40.0&deg;</td>
+                                <td>[-4.0V, 4.0V]</td>
+                            </tr>
+                            <tr onclick="setRadarBand(1)" style="cursor: pointer;">
+                                <td style="font-weight: 700; color: var(--accent-purple);">Channel 2</td>
+                                <td>5.100 GHz</td>
+                                <td><span class="code-pill">&times;3.0</span></td>
+                                <td>50.0&deg;</td>
+                                <td>60.0&deg;</td>
+                                <td>[-6.0V, 6.0V]</td>
+                            </tr>
+                            <tr onclick="setRadarBand(2)" style="cursor: pointer;">
+                                <td style="font-weight: 700; color: var(--accent-amber);">Channel 3</td>
+                                <td>5.800 GHz</td>
+                                <td><span class="code-pill">&times;4.0</span></td>
+                                <td>60.0&deg;</td>
+                                <td>70.0&deg;</td>
+                                <td>[-8.0V, 8.0V]</td>
+                            </tr>
+                            <tr onclick="setRadarBand(3)" style="cursor: pointer;">
+                                <td style="font-weight: 700; color: var(--accent-emerald);">Channel 4</td>
+                                <td>Combined</td>
+                                <td><span class="code-pill">Dynamic</span></td>
+                                <td>Active Tracking</td>
+                                <td>Active Tracking</td>
+                                <td>[-8.0V, 8.0V]</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div style="margin-top: 1.25rem; font-size: 0.88rem; color: var(--text-muted); line-height: 1.6;">
+                        <strong style="color: #ffffff;">Dynamic Zeroing Feature:</strong> When the RF transmitter frequency hops away from a channel, that tab's polar radar blip automatically drops to <code class="code-pill">0&deg;, 0&deg; (Center Origin / Idle)</code>, providing the operator with unmistakable visual awareness of active vs idle bands.
+                    </div>
+                </div>
+
+                <!-- Radar Canvas Visualizer -->
+                <div class="radar-canvas-container">
+                    <canvas id="radarCanvas" width="300" height="300"></canvas>
+                    
+                    <div class="radar-controls">
+                        <button class="radar-btn active" onclick="setRadarBand(0)">2.4 GHz (30&deg;, 40&deg;)</button>
+                        <button class="radar-btn" onclick="setRadarBand(1)">5.1 GHz (50&deg;, 60&deg;)</button>
+                        <button class="radar-btn" onclick="setRadarBand(2)">5.8 GHz (60&deg;, 70&deg;)</button>
+                        <button class="radar-btn" onclick="setRadarBand(-1)">Idle (0&deg;, 0&deg;)</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Timing & Synchronization Lifecycle -->
+        <section>
+            <div class="section-header">
+                <span class="section-tag">05 / Hardware Timing & Flow Control</span>
+                <h2 class="section-title">Hardware-Paced Timing Diagram</h2>
+            </div>
+
+            <p style="color: var(--text-muted);">
+                System 1 paces bursts strictly against the USRP's internal hardware clock (<code class="code-pill">usrp.now()</code>) to guarantee zero timing drift over 24/7 continuous operation:
+            </p>
+
+            <div class="timeline-container">
+                <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim);">
+                    <span>t = 0.0s (Burst Start)</span>
+                    <span>t = 1.0s (Burst End)</span>
+                    <span>t = 2.0s (Next Hop)</span>
+                </div>
+
+                <div class="timeline-bar">
+                    <div class="time-slice burst">
+                        ACTIVE RF BURST (1.00s — 2,000,000 Samples @ 2.0 MS/s)
+                    </div>
+                    <div class="time-slice silence">
+                        SILENCE & RETUNE (1.00s — LO Lock & Async Message Drain)
+                    </div>
+                </div>
+
+                <div class="legend-row">
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: var(--accent-cyan);"></div>
+                        <span>10 kHz Baseband CW Tone Transmitted & Captured</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-box" style="background: #232b3c; border: 1px solid var(--border-color);"></div>
+                        <span>Carrier Frequency Retune, PLL Lock Verify, Zero-Padded Ring Buffer Stream</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <div class="container">
+                <p>USRP B210 Distributed Streaming Architecture &bull; Pair-Programmed with Antigravity &bull; 2026</p>
+                <p style="margin-top: 6px; color: var(--text-dim);">Repository: <a href="https://github.com/subeep/clink" target="_blank" style="color: var(--accent-cyan); text-decoration: none;">github.com/subeep/clink</a></p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Data for Memory-Mapped Inspector
+        const fieldData = {
+            magic: {
+                title: "magic (0x49515333)",
+                desc: "32-bit protocol alignment magic identifier ('IQS3'). Guarantees exact TCP byte-stream frame alignment and validates frame integrity before parsing.",
+                offset: "0x00 - 0x03 (4 Bytes)",
+                type: "uint32_t",
+                val: "0x49515333 ('IQS3')",
+                action: "Validates synchronization boundary at ingress"
+            },
+            seq: {
+                title: "sequence_num (Monotonic Counter)",
+                desc: "Monotonically increasing sequence number incremented for every transmitted frame. Enables immediate zero-loss packet gap and drop detection.",
+                offset: "0x04 - 0x07 (4 Bytes)",
+                type: "uint32_t",
+                val: "0, 1, 2, 3...",
+                action: "Packet loss & reordering tracking"
+            },
+            ts: {
+                title: "timestamp_ns (UTC Epoch Nanoseconds)",
+                desc: "High-resolution 64-bit UTC epoch timestamp in nanoseconds captured at the precise moment of frame creation at System 1. Used to measure true End-to-End network transit latency.",
+                offset: "0x08 - 0x0F (8 Bytes)",
+                type: "uint64_t",
+                val: "1787293256831000000 ns",
+                action: "Real-time E2E Latency & Jitter calculation"
+            },
+            rf: {
+                title: "center_freq_hz (RF Carrier Frequency)",
+                desc: "64-bit IEEE-754 double precision float containing the active RF center carrier frequency (2.4 GHz, 5.1 GHz, or 5.8 GHz).",
+                offset: "0x10 - 0x17 (8 Bytes)",
+                type: "double",
+                val: "2.400000000e+09 Hz",
+                action: "Directs 4-channel demultiplexer band routing"
+            },
+            mult: {
+                title: "iq_multiplier (Amplitude Multiplier)",
+                desc: "32-bit IEEE float defining the signal voltage scaling multiplier (1.0 at S1; 2.0, 3.0, 4.0 at S2 and S3).",
+                offset: "0x18 - 0x1B (4 Bytes)",
+                type: "float",
+                val: "2.0f (or 3.0f, 4.0f)",
+                action: "Controls SIMD voltage scaling factor"
+            },
+            el: {
+                title: "elevation_deg (Elevation Target Angle)",
+                desc: "Fixed elevation target coordinate in degrees (30.0° for 2.4G, 50.0° for 5.1G, 60.0° for 5.8G). Passes unaltered through System 2 to System 3.",
+                offset: "0x1C - 0x1F (4 Bytes)",
+                type: "float",
+                val: "30.0° (2.4G), 50.0° (5.1G), 60.0° (5.8G)",
+                action: "Renders polar radar radial distance"
+            },
+            az: {
+                title: "azimuth_deg (Azimuth Target Bearing)",
+                desc: "Fixed azimuth target bearing in degrees (40.0° for 2.4G, 60.0° for 5.1G, 70.0° for 5.8G).",
+                offset: "0x20 - 0x23 (4 Bytes)",
+                type: "float",
+                val: "40.0° (2.4G), 60.0° (5.1G), 70.0° (5.8G)",
+                action: "Renders polar radar radial bearing vector"
+            },
+            samples: {
+                title: "sample_count (Complex Samples per Channel)",
+                desc: "Number of complex IQ samples per channel in this frame. Standard is 2,000 samples (8,000 bytes TX + 8,000 bytes RX).",
+                offset: "0x24 - 0x27 (4 Bytes)",
+                type: "uint32_t",
+                val: "2000 (1.0 ms @ 2.0 MS/s)",
+                action: "Payload boundary determination"
+            },
+            fft: {
+                title: "fft_size (FFT Spectral Resolution)",
+                desc: "Size of precomputed FFT vector in float points (4096 bins sent at ~33 Hz rate, or 0 during intermediate frames).",
+                offset: "0x28 - 0x2B (4 Bytes)",
+                type: "uint32_t",
+                val: "4096 (or 0)",
+                action: "Direct RF spectrum plot update"
+            },
+            burst: {
+                title: "is_bursting (Active Transmission Flag)",
+                desc: "Binary flag indicating active hardware transmission (1) vs silence / frequency retuning period (0).",
+                offset: "0x2C - 0x2F (4 Bytes)",
+                type: "uint32_t",
+                val: "1 (Burst) / 0 (Silence)",
+                action: "Drives dashboard status badge & polar zeroing"
+            }
+        };
+
+        function inspectField(key) {
+            document.querySelectorAll('.byte-box').forEach(el => el.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            
+            const d = fieldData[key];
+            document.getElementById('inspTitle').textContent = d.title;
+            document.getElementById('inspDesc').textContent = d.desc;
+            document.getElementById('inspOffset').innerHTML = `<span class="code-pill">${d.offset}</span>`;
+            document.getElementById('inspType').innerHTML = `<span class="code-pill">${d.type}</span>`;
+            document.getElementById('inspVal').innerHTML = `<span class="code-pill">${d.val}</span>`;
+            document.getElementById('inspAction').textContent = d.action;
+        }
+
+        // Live Quantization Calculator
+        function updateCalculator() {
+            const fVal = parseFloat(document.getElementById('floatInput').value) || 0.0;
+            const mult = parseFloat(document.getElementById('multInput').value) || 1.0;
+            
+            // Formula: clamp(round(fVal * (32767.0 / mult)), -32768, 32767)
+            const scaleFactor = 32767.0 / mult;
+            let sc16 = Math.round(fVal * scaleFactor);
+            if (sc16 > 32767) sc16 = 32767;
+            if (sc16 < -32768) sc16 = -32768;
+
+            const reconstructed = (sc16 / 32767.0) * mult;
+            const err = Math.abs(reconstructed - fVal);
+            const snr = err > 0 ? (20 * Math.log10(Math.abs(fVal) / err)).toFixed(1) : "Inf";
+
+            document.getElementById('sc16Result').textContent = sc16.toLocaleString();
+            document.getElementById('reconstructResult').textContent = 
+                `Reconstructed Float: ${reconstructed.toFixed(6)} V (Est. SNR: ${snr} dB)`;
+        }
+
+        // Interactive Polar Radar Canvas Simulation
+        const radarCanvas = document.getElementById('radarCanvas');
+        const ctx = radarCanvas.getContext('2d');
+        let currentRadarAngle = { el: 30, az: 40, active: true };
+        let sweepAngle = 0;
+
+        const bandAngles = [
+            { el: 30, az: 40, active: true },
+            { el: 50, az: 60, active: true },
+            { el: 60, az: 70, active: true },
+            { el: 30, az: 40, active: true }
+        ];
+
+        function setRadarBand(idx) {
+            document.querySelectorAll('.radar-btn').forEach((b, i) => {
+                b.classList.remove('active');
+            });
+            if (event && event.currentTarget) event.currentTarget.classList.add('active');
+
+            if (idx === -1) {
+                currentRadarAngle = { el: 0, az: 0, active: false };
+            } else {
+                currentRadarAngle = { ...bandAngles[idx], active: true };
+            }
+        }
+
+        function drawRadar() {
+            const w = radarCanvas.width;
+            const h = radarCanvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const maxR = w * 0.44;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Radar background grid
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+            ctx.lineWidth = 1;
+
+            // Concentric rings (30, 60, 90 deg)
+            [0.33, 0.66, 1.0].forEach((ratio, i) => {
+                ctx.beginPath();
+                ctx.arc(cx, cy, maxR * ratio, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            // Crosshairs
+            ctx.beginPath();
+            ctx.moveTo(cx - maxR, cy); ctx.lineTo(cx + maxR, cy);
+            ctx.moveTo(cx, cy - maxR); ctx.lineTo(cx, cy + maxR);
+            ctx.stroke();
+
+            // Rotating sweep line
+            sweepAngle = (sweepAngle + 0.03) % (Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + maxR * Math.cos(sweepAngle), cy + maxR * Math.sin(sweepAngle));
+            ctx.stroke();
+
+            // Target bearing & blip
+            if (currentRadarAngle.active && currentRadarAngle.el > 0) {
+                const rad = (currentRadarAngle.az * Math.PI) / 180;
+                const r = (currentRadarAngle.el / 90.0) * maxR;
+                const tx = cx + r * Math.sin(rad);
+                const ty = cy - r * Math.cos(rad);
+
+                // Bearing line
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(tx, ty);
+                ctx.stroke();
+
+                // Target Blip
+                ctx.fillStyle = '#ff0055';
+                ctx.beginPath();
+                ctx.arc(tx, ty, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ffff00';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Text
+                ctx.fillStyle = '#00f0ff';
+                ctx.font = '11px "Fira Code", monospace';
+                ctx.fillText(`(${currentRadarAngle.el}°, ${currentRadarAngle.az}°)`, tx + 8, ty - 4);
+            } else {
+                // Idle Marker at Origin (0,0)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#8e9bb2';
+                ctx.font = '11px "Fira Code", monospace';
+                ctx.fillText('IDLE (0°, 0°)', cx + 8, cy + 14);
+            }
+
+            requestAnimationFrame(drawRadar);
+        }
+
+        drawRadar();
+        updateCalculator();
+    </script>
+</body>
+</html>

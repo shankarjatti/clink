@@ -95,8 +95,8 @@ void BurstController::net_stream_loop()
         const float* rx_fft_ptr = nullptr;
         size_t send_fft_len = 0;
 
-        // Compute and attach FFT spectra every ~30ms (~33 Hz)
-        if (++iter % 30 == 0) {
+        // Compute and attach FFT spectra every ~10ms (~100 Hz)
+        if (++iter % 10 == 0) {
             size_t nft = tx_ring_.read_latest(fft_scratch.data(), kFftLen);
             if (nft < kFftLen) std::fill(fft_scratch.begin() + nft, fft_scratch.end(), std::complex<float>(0.0f, 0.0f));
             tx_fft.compute(fft_scratch.data(), tx_fft_db, usrp_.sample_rate(), dummy_freq);
@@ -173,7 +173,7 @@ void BurstController::run_burst(const BandGainConfig& /*band*/,
 
     size_t samples_sent = 0;
     const std::complex<float>* buf_ptr = tone_chunk_.data();
-    constexpr double kLeadTimeS = 0.04; // 40 ms lead buffer to prevent UHD underflow
+    constexpr double kLeadTimeS = 0.01; // 10 ms lead buffer to prevent UHD underflow
 
     while (samples_sent < total_samples && !stop_flag_.load()) {
         uhd::time_spec_t chunk_tx_time =
@@ -257,8 +257,8 @@ void BurstController::control_loop()
         const auto& band = bands_[idx];
         current_freq_hz_.store(band.freq_hz);
 
-        // Schedule burst_start 50ms into the future so UHD is always safely armed
-        uhd::time_spec_t burst_start = usrp_.now() + uhd::time_spec_t(0.05);
+        // Schedule burst_start 20ms into the future so UHD is safely armed
+        uhd::time_spec_t burst_start = usrp_.now() + uhd::time_spec_t(0.02);
 
         // Arm RX2 to receive exactly total_samples at the identical burst_start timestamp
         uhd::stream_cmd_t rx_cmd(uhd::stream_cmd_t::STREAM_MODE_NUM_SAMPS_AND_DONE);
@@ -272,7 +272,7 @@ void BurstController::control_loop()
         is_bursting_.store(false);
         burst_count_.fetch_add(1);
 
-        // Silence period of 1.0 second
+        // Silence period of 100ms (0.1s)
         uhd::time_spec_t silence_end = usrp_.now() + uhd::time_spec_t(kSilenceDurationS);
 
         // --- silence period: retune + housekeeping ---
