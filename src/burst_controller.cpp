@@ -36,11 +36,20 @@ void BurstController::set_interference_mitigation_hook(std::function<void()> hoo
     interference_hook_ = std::move(hook);
 }
 
+void BurstController::set_net_sender(std::shared_ptr<IqTcpSender> sender)
+{
+    net_sender_ = std::move(sender);
+}
+
 void BurstController::start()
 {
     stop_flag_ = false;
     rx_thread_ = std::thread(&BurstController::rx_loop, this);
     control_thread_ = std::thread(&BurstController::control_loop, this);
+    if (net_sender_) {
+        net_sender_->start();
+        net_thread_ = std::thread(&BurstController::net_stream_loop, this);
+    }
 }
 
 void BurstController::stop()
@@ -48,6 +57,37 @@ void BurstController::stop()
     stop_flag_ = true;
     if (control_thread_.joinable()) control_thread_.join();
     if (rx_thread_.joinable()) rx_thread_.join();
+    if (net_thread_.joinable()) net_thread_.join();
+    if (net_sender_) net_sender_->stop();
+}
+
+void BurstController::net_stream_loop()
+{
+    std::vector<std::complex<float>> tx_buf(spb_);
+    std::vector<std::complex<float>> rx_buf(spb_);
+
+    while (!stop_flag_.load()) {
+        if (!net_sender_ || !net_sender_->is_connected()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
+
+        size_t n_tx = tx_ring_.read_latest(tx_buf.data(), tx_buf.size());
+        size_t n_rx = rx_ring_.read_latest(rx_buf.data(), rx_buf.size());
+
+        if (n_tx < tx_buf.size()) {
+            std::fill(tx_buf.begin() + n_tx, tx_buf.end(), std::complex<float>(0.0f, 0.0f));
+        }
+        if (n_rx < rx_buf.size()) {
+            std::fill(rx_buf.begin() + n_rx, rx_buf.end(), std::complex<float>(0.0f, 0.0f));
+        }
+
+        uint64_t ts_ns = static_cast<uint64_t>(usrp_.now().get_real_secs() * 1e9);
+        net_sender_->send_frame(ts_ns, current_freq_hz_.load(), is_bursting_.load(),
+                                tx_buf.data(), rx_buf.data(), spb_);
+
+        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>((spb_ * 1e6) / usrp_.sample_rate())));
+    }
 }
 
 void BurstController::drain_tx_async_messages()

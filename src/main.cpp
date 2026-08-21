@@ -44,7 +44,21 @@ std::vector<BandGainConfig> default_bands()
 
 int UHD_SAFE_MAIN(int argc, char* argv[])
 {
-    std::string device_args = (argc > 1) ? argv[1] : "";
+    std::string device_args = "";
+    std::string stream_target = "";
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--stream-to" && i + 1 < argc) {
+            stream_target = argv[++i];
+        } else if (arg.rfind("--args=", 0) == 0) {
+            device_args = arg.substr(7);
+        } else if (arg.rfind("--stream-to=", 0) == 0) {
+            stream_target = arg.substr(12);
+        } else if (device_args.empty() && arg[0] != '-') {
+            device_args = arg;
+        }
+    }
 
     std::cout << "Opening USRP B210 (device_args=\"" << device_args << "\")...\n";
     UsrpManager usrp(device_args, kSampleRateHz);
@@ -58,6 +72,18 @@ int UHD_SAFE_MAIN(int argc, char* argv[])
 
     BurstController controller(usrp, default_bands(), tx_ring, rx_ring);
 
+    // Optional network streaming to System 2
+    std::shared_ptr<IqTcpSender> net_sender;
+    if (!stream_target.empty()) {
+        size_t colon = stream_target.find(':');
+        std::string host = (colon != std::string::npos) ? stream_target.substr(0, colon) : "127.0.0.1";
+        int port = (colon != std::string::npos) ? std::stoi(stream_target.substr(colon + 1)) : 5000;
+
+        std::cout << "[System 1] Configured TCP streaming to System 2 at " << host << ":" << port << "\n";
+        net_sender = std::make_shared<IqTcpSender>(host, port);
+        controller.set_net_sender(net_sender);
+    }
+
     // Extension point for "other tasks that might interfere with the next
     // burst" - wire up whatever your setup needs here (e.g. quiescing
     // another radio, checking external interlocks). No-op by default.
@@ -68,7 +94,7 @@ int UHD_SAFE_MAIN(int argc, char* argv[])
     controller.start();
 
     {
-        Gui gui(controller, tx_ring, rx_ring, kSampleRateHz);
+        Gui gui(controller, tx_ring, rx_ring, kSampleRateHz, "USRP B210 Burst Monitor (System 1 - Source)");
         gui.run(); // blocks until the window is closed
     }
 

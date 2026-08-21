@@ -18,12 +18,13 @@ void glfw_error_callback(int error, const char* description)
 }
 } // namespace
 
-Gui::Gui(BurstController& controller, IqRingBuffer& tx_ring, IqRingBuffer& rx_ring,
-         double sample_rate_hz)
-    : controller_(controller),
+Gui::Gui(IMonitorStatus& status, IqRingBuffer& tx_ring, IqRingBuffer& rx_ring,
+         double sample_rate_hz, std::string window_title)
+    : status_(status),
       tx_ring_(tx_ring),
       rx_ring_(rx_ring),
       sample_rate_hz_(sample_rate_hz),
+      window_title_(std::move(window_title)),
       tx_fft_(kFftSize),
       rx_fft_(kFftSize)
 {
@@ -56,8 +57,7 @@ bool Gui::init_window()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-    window_ = glfwCreateWindow(1280, 800, "USRP B210 Burst TX/RX Monitor", nullptr,
-                                nullptr);
+    window_ = glfwCreateWindow(1280, 800, window_title_.c_str(), nullptr, nullptr);
     if (!window_) {
         std::fprintf(stderr, "[Gui] glfwCreateWindow failed\n");
         return false;
@@ -94,9 +94,9 @@ void Gui::shutdown_window()
 
 void Gui::draw_status_bar()
 {
-    double freq = controller_.current_freq_hz();
-    bool bursting = controller_.is_bursting();
-    bool locked = controller_.last_retune_locked();
+    double freq = status_.current_freq_hz();
+    bool bursting = status_.is_bursting();
+    bool locked = status_.last_retune_locked();
 
     ImGui::Text("Band: %.3f GHz", freq / 1e9);
     ImGui::SameLine();
@@ -111,16 +111,16 @@ void Gui::draw_status_bar()
     ImGui::Text("| Rate: %.1f MS/s", sample_rate_hz_ / 1e6);
     ImGui::SameLine();
     ImGui::Text("| bursts: %llu",
-                static_cast<unsigned long long>(controller_.burst_count()));
+                static_cast<unsigned long long>(status_.burst_count()));
     ImGui::SameLine();
     ImGui::Text("| TX underflow: %llu",
-                static_cast<unsigned long long>(controller_.tx_underflow_count()));
+                static_cast<unsigned long long>(status_.tx_underflow_count()));
     ImGui::SameLine();
     ImGui::Text("| TX late: %llu",
-                static_cast<unsigned long long>(controller_.tx_late_count()));
+                static_cast<unsigned long long>(status_.tx_late_count()));
     ImGui::SameLine();
     ImGui::Text("| RX overflow: %llu",
-                static_cast<unsigned long long>(controller_.rx_overflow_count()));
+                static_cast<unsigned long long>(status_.rx_overflow_count()));
 }
 
 void Gui::draw_waveform_plot(const char* title, IqRingBuffer& ring,
@@ -205,7 +205,7 @@ void Gui::draw_frame()
     draw_status_bar();
     ImGui::Separator();
 
-    double carrier_mhz = controller_.current_freq_hz() / 1e6;
+    double carrier_mhz = status_.current_freq_hz() / 1e6;
 
     ImVec2 avail = ImGui::GetContentRegionAvail();
     if (ImPlot::BeginSubplots("##2x2", 2, 2, avail)) {

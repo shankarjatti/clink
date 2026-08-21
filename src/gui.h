@@ -12,20 +12,20 @@
 
 #pragma once
 
-#include <complex>
+#include <string>
 #include <vector>
 
-#include "burst_controller.h"
 #include "fft_processor.h"
 #include "ring_buffer.h"
+#include "status_provider.h"
 
 struct GLFWwindow;
 
 class Gui
 {
 public:
-    Gui(BurstController& controller, IqRingBuffer& tx_ring, IqRingBuffer& rx_ring,
-        double sample_rate_hz);
+    Gui(IMonitorStatus& status, IqRingBuffer& tx_ring, IqRingBuffer& rx_ring,
+        double sample_rate_hz, std::string window_title = "USRP B210 Burst Monitor");
     ~Gui();
 
     // Blocks, running the render loop until the window is closed. Returns
@@ -46,10 +46,11 @@ private:
                         std::vector<float>& out_db, std::vector<float>& out_freq,
                         double carrier_freq_mhz, double& last_carrier_freq_mhz);
 
-    BurstController& controller_;
+    IMonitorStatus& status_;
     IqRingBuffer& tx_ring_;
     IqRingBuffer& rx_ring_;
     double sample_rate_hz_;
+    std::string window_title_;
 
     GLFWwindow* window_ = nullptr;
 

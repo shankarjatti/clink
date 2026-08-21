@@ -34,11 +34,13 @@
 
 #include <uhd/types/time_spec.hpp>
 
+#include "net_streamer.h"
 #include "ring_buffer.h"
 #include "signal_gen.h"
+#include "status_provider.h"
 #include "usrp_manager.h"
 
-class BurstController
+class BurstController : public IMonitorStatus
 {
 public:
     static constexpr double kBurstDurationS = 1.0;
@@ -55,21 +57,24 @@ public:
     // Runs on the control thread - keep it well under 1 second.
     void set_interference_mitigation_hook(std::function<void()> hook);
 
+    void set_net_sender(std::shared_ptr<IqTcpSender> sender);
+
     void start();
     void stop(); // signals both threads and joins them
 
     // ---- status accessors for the GUI thread (all lock-free atomics) ----
-    double current_freq_hz() const { return current_freq_hz_.load(); }
-    bool is_bursting() const { return is_bursting_.load(); }
-    bool last_retune_locked() const { return last_retune_locked_.load(); }
-    uint64_t burst_count() const { return burst_count_.load(); }
-    uint64_t tx_underflow_count() const { return tx_underflow_count_.load(); }
-    uint64_t tx_late_count() const { return tx_late_count_.load(); }
-    uint64_t rx_overflow_count() const { return rx_overflow_count_.load(); }
+    double current_freq_hz() const override { return current_freq_hz_.load(); }
+    bool is_bursting() const override { return is_bursting_.load(); }
+    bool last_retune_locked() const override { return last_retune_locked_.load(); }
+    uint64_t burst_count() const override { return burst_count_.load(); }
+    uint64_t tx_underflow_count() const override { return tx_underflow_count_.load(); }
+    uint64_t tx_late_count() const override { return tx_late_count_.load(); }
+    uint64_t rx_overflow_count() const override { return rx_overflow_count_.load(); }
 
 private:
     void control_loop();
     void rx_loop();
+    void net_stream_loop();
 
     // Sends kBurstDurationS worth of the tone, first packet time-stamped at
     // burst_start. Writes every transmitted chunk into tx_ring_ for the GUI.
@@ -84,6 +89,8 @@ private:
     IqRingBuffer& tx_ring_;
     IqRingBuffer& rx_ring_;
 
+    std::shared_ptr<IqTcpSender> net_sender_;
+
     ToneGenerator tone_gen_;
     size_t spb_ = 0; // samples per buffer, clamped to streamer's max
     std::vector<std::complex<float>> tone_chunk_;
@@ -92,6 +99,7 @@ private:
 
     std::thread control_thread_;
     std::thread rx_thread_;
+    std::thread net_thread_;
     std::atomic<bool> stop_flag_{false};
 
     std::atomic<double> current_freq_hz_{0.0};

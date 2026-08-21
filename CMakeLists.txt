@@ -50,11 +50,13 @@ add_library(implot STATIC
 target_include_directories(implot PUBLIC ${IMPLOT_DIR})
 target_link_libraries(implot PUBLIC imgui)
 
+# System 1: SDR Source Node + GUI + TCP Streamer
 add_executable(usrp_burst_gui
     src/main.cpp
     src/usrp_manager.cpp
     src/burst_controller.cpp
     src/fft_processor.cpp
+    src/net_streamer.cpp
     src/gui.cpp
 )
 
@@ -74,3 +76,50 @@ target_link_libraries(usrp_burst_gui PRIVATE
 )
 
 target_compile_options(usrp_burst_gui PRIVATE -Wall -Wextra -O2)
+
+# System 2: Relay Node (sc16 -> float -> Live GUI -> float -> sc16 -> S3)
+add_executable(usrp_relay_gui
+    src/relay_main.cpp
+    src/fft_processor.cpp
+    src/net_streamer.cpp
+    src/gui.cpp
+)
+
+target_include_directories(usrp_relay_gui PRIVATE
+    ${FFTW_INCLUDE_DIRS}
+)
+
+target_link_directories(usrp_relay_gui PRIVATE ${FFTW_LIBRARY_DIRS})
+
+target_link_libraries(usrp_relay_gui PRIVATE
+    imgui
+    implot
+    fftw3f
+    Threads::Threads
+)
+
+target_compile_options(usrp_relay_gui PRIVATE -Wall -Wextra -O2)
+
+# System 3: Sink Node (sc16 -> float -> Live GUI & Packet Loss Verification)
+add_executable(usrp_sink_gui
+    src/sink_main.cpp
+    src/fft_processor.cpp
+    src/net_streamer.cpp
+    src/gui.cpp
+)
+
+target_include_directories(usrp_sink_gui PRIVATE
+    ${FFTW_INCLUDE_DIRS}
+)
+
+target_link_directories(usrp_sink_gui PRIVATE ${FFTW_LIBRARY_DIRS})
+
+target_link_libraries(usrp_sink_gui PRIVATE
+    imgui
+    implot
+    fftw3f
+    Threads::Threads
+)
+
+target_compile_options(usrp_sink_gui PRIVATE -Wall -Wextra -O2)
+
