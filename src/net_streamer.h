@@ -30,17 +30,15 @@ public:
     uint64_t bytes_sent() const { return bytes_sent_.load(); }
 
     bool send_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
-                    const std::complex<float>* tx_iq, const std::complex<float>* rx_iq,
-                    size_t sample_count,
-                    const float* tx_fft_db = nullptr, const float* rx_fft_db = nullptr,
-                    size_t fft_size = 0, float iq_multiplier = 1.0f,
+                    const std::complex<float>* rx_iq, size_t sample_count,
+                    const float* rx_fft_db = nullptr, size_t fft_size = 0,
+                    float iq_multiplier = 1.0f,
                     float elevation_deg = 0.0f, float azimuth_deg = 0.0f);
 
     bool send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
-                         const int16_t* tx_sc16, const int16_t* rx_sc16,
-                         size_t sample_count,
-                         const float* tx_fft_db = nullptr, const float* rx_fft_db = nullptr,
-                         size_t fft_size = 0, float iq_multiplier = 1.0f,
+                         const int16_t* rx_sc16, size_t sample_count,
+                         const float* rx_fft_db = nullptr, size_t fft_size = 0,
+                         float iq_multiplier = 1.0f,
                          float elevation_deg = 0.0f, float azimuth_deg = 0.0f);
 
 private:
@@ -61,7 +59,6 @@ private:
     std::atomic<uint64_t> bytes_sent_{0};
 
     std::mutex send_mutex_;
-    std::vector<int16_t> tx_sc16_buf_;
     std::vector<int16_t> rx_sc16_buf_;
     std::vector<uint8_t> send_packet_buf_;
 };
@@ -81,9 +78,7 @@ public:
     uint64_t bytes_received() const { return bytes_received_.load(); }
 
     bool recv_frame(IqFrameHeader& out_header,
-                    std::vector<int16_t>& out_tx_sc16,
                     std::vector<int16_t>& out_rx_sc16,
-                    std::vector<float>& out_tx_fft,
                     std::vector<float>& out_rx_fft);
 
 private:

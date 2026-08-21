@@ -95,9 +95,9 @@ void IqTcpSender::connection_loop()
 }
 
 bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
-                             const std::complex<float>* tx_iq, const std::complex<float>* rx_iq,
+                             const std::complex<float>* rx_iq,
                              size_t sample_count,
-                             const float* tx_fft_db, const float* rx_fft_db,
+                             const float* rx_fft_db,
                              size_t fft_size, float iq_multiplier,
                              float elevation_deg, float azimuth_deg)
 {
@@ -110,15 +110,12 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
         return false;
     }
 
-    // Convert tx and rx float samples to sc16 (using scaled encoder if multiplier != 1.0)
-    tx_sc16_buf_.resize(sample_count * 2);
+    // Convert rx float samples to sc16 (using scaled encoder if multiplier != 1.0)
     rx_sc16_buf_.resize(sample_count * 2);
 
     if (std::abs(iq_multiplier - 1.0f) > 1e-4f) {
-        net_util::float_to_sc16_scaled(tx_iq, tx_sc16_buf_.data(), sample_count, iq_multiplier);
         net_util::float_to_sc16_scaled(rx_iq, rx_sc16_buf_.data(), sample_count, iq_multiplier);
     } else {
-        net_util::float_to_sc16(tx_iq, tx_sc16_buf_.data(), sample_count);
         net_util::float_to_sc16(rx_iq, rx_sc16_buf_.data(), sample_count);
     }
 
@@ -131,12 +128,12 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
     hdr.elevation_deg = elevation_deg;
     hdr.azimuth_deg = azimuth_deg;
     hdr.sample_count = static_cast<uint32_t>(sample_count);
-    hdr.fft_size = (tx_fft_db && rx_fft_db) ? static_cast<uint32_t>(fft_size) : 0;
+    hdr.fft_size = rx_fft_db ? static_cast<uint32_t>(fft_size) : 0;
     hdr.is_bursting = is_bursting ? 1 : 0;
 
-    size_t iq_bytes_per_chan = sample_count * sizeof(int16_t) * 2;
-    size_t fft_bytes_per_chan = hdr.fft_size * sizeof(float);
-    size_t total_payload_bytes = sizeof(IqFrameHeader) + (iq_bytes_per_chan * 2) + (fft_bytes_per_chan * 2);
+    size_t iq_bytes = sample_count * sizeof(int16_t) * 2;
+    size_t fft_bytes = hdr.fft_size * sizeof(float);
+    size_t total_payload_bytes = sizeof(IqFrameHeader) + iq_bytes + fft_bytes;
 
     send_packet_buf_.resize(total_payload_bytes);
     uint8_t* dst = send_packet_buf_.data();
@@ -145,20 +142,14 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
     std::memcpy(dst, &hdr, sizeof(IqFrameHeader));
     dst += sizeof(IqFrameHeader);
 
-    // 2. Copy TX sc16
-    std::memcpy(dst, tx_sc16_buf_.data(), iq_bytes_per_chan);
-    dst += iq_bytes_per_chan;
+    // 2. Copy RX sc16
+    std::memcpy(dst, rx_sc16_buf_.data(), iq_bytes);
+    dst += iq_bytes;
 
-    // 3. Copy RX sc16
-    std::memcpy(dst, rx_sc16_buf_.data(), iq_bytes_per_chan);
-    dst += iq_bytes_per_chan;
-
-    // 4. Copy Optional FFT vectors
-    if (hdr.fft_size > 0) {
-        std::memcpy(dst, tx_fft_db, fft_bytes_per_chan);
-        dst += fft_bytes_per_chan;
-        std::memcpy(dst, rx_fft_db, fft_bytes_per_chan);
-        dst += fft_bytes_per_chan;
+    // 3. Copy Optional RX FFT vector
+    if (hdr.fft_size > 0 && rx_fft_db) {
+        std::memcpy(dst, rx_fft_db, fft_bytes);
+        dst += fft_bytes;
     }
 
     if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
@@ -175,9 +166,9 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
 }
 
 bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
-                                  const int16_t* tx_sc16, const int16_t* rx_sc16,
+                                  const int16_t* rx_sc16,
                                   size_t sample_count,
-                                  const float* tx_fft_db, const float* rx_fft_db,
+                                  const float* rx_fft_db,
                                   size_t fft_size, float iq_multiplier,
                                   float elevation_deg, float azimuth_deg)
 {
@@ -199,12 +190,12 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
     hdr.elevation_deg = elevation_deg;
     hdr.azimuth_deg = azimuth_deg;
     hdr.sample_count = static_cast<uint32_t>(sample_count);
-    hdr.fft_size = (tx_fft_db && rx_fft_db) ? static_cast<uint32_t>(fft_size) : 0;
+    hdr.fft_size = rx_fft_db ? static_cast<uint32_t>(fft_size) : 0;
     hdr.is_bursting = is_bursting ? 1 : 0;
 
-    size_t iq_bytes_per_chan = sample_count * sizeof(int16_t) * 2;
-    size_t fft_bytes_per_chan = hdr.fft_size * sizeof(float);
-    size_t total_payload_bytes = sizeof(IqFrameHeader) + (iq_bytes_per_chan * 2) + (fft_bytes_per_chan * 2);
+    size_t iq_bytes = sample_count * sizeof(int16_t) * 2;
+    size_t fft_bytes = hdr.fft_size * sizeof(float);
+    size_t total_payload_bytes = sizeof(IqFrameHeader) + iq_bytes + fft_bytes;
 
     send_packet_buf_.resize(total_payload_bytes);
     uint8_t* dst = send_packet_buf_.data();
@@ -213,20 +204,14 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
     std::memcpy(dst, &hdr, sizeof(IqFrameHeader));
     dst += sizeof(IqFrameHeader);
 
-    // 2. Copy TX sc16
-    std::memcpy(dst, tx_sc16, iq_bytes_per_chan);
-    dst += iq_bytes_per_chan;
+    // 2. Copy RX sc16
+    std::memcpy(dst, rx_sc16, iq_bytes);
+    dst += iq_bytes;
 
-    // 3. Copy RX sc16
-    std::memcpy(dst, rx_sc16, iq_bytes_per_chan);
-    dst += iq_bytes_per_chan;
-
-    // 4. Copy Optional FFT vectors
-    if (hdr.fft_size > 0) {
-        std::memcpy(dst, tx_fft_db, fft_bytes_per_chan);
-        dst += fft_bytes_per_chan;
-        std::memcpy(dst, rx_fft_db, fft_bytes_per_chan);
-        dst += fft_bytes_per_chan;
+    // 3. Copy Optional RX FFT vector
+    if (hdr.fft_size > 0 && rx_fft_db) {
+        std::memcpy(dst, rx_fft_db, fft_bytes);
+        dst += fft_bytes;
     }
 
     if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
@@ -347,9 +332,7 @@ void IqTcpReceiver::accept_loop()
 }
 
 bool IqTcpReceiver::recv_frame(IqFrameHeader& out_header,
-                              std::vector<int16_t>& out_tx_sc16,
                               std::vector<int16_t>& out_rx_sc16,
-                              std::vector<float>& out_tx_fft,
                               std::vector<float>& out_rx_fft)
 {
     if (!is_client_connected_.load() || client_fd_ < 0) {
@@ -378,40 +361,27 @@ bool IqTcpReceiver::recv_frame(IqFrameHeader& out_header,
     }
     expected_seq_ = out_header.sequence_num + 1;
 
-    // 2. Read TX sc16
-    size_t iq_samples_per_chan = out_header.sample_count;
-    out_tx_sc16.resize(iq_samples_per_chan * 2);
-    if (!net_util::recv_exact(client_fd_, out_tx_sc16.data(), iq_samples_per_chan * sizeof(int16_t) * 2)) {
+    // 2. Read RX sc16
+    size_t iq_samples = out_header.sample_count;
+    out_rx_sc16.resize(iq_samples * 2);
+    if (!net_util::recv_exact(client_fd_, out_rx_sc16.data(), iq_samples * sizeof(int16_t) * 2)) {
         close_client();
         return false;
     }
 
-    // 3. Read RX sc16
-    out_rx_sc16.resize(iq_samples_per_chan * 2);
-    if (!net_util::recv_exact(client_fd_, out_rx_sc16.data(), iq_samples_per_chan * sizeof(int16_t) * 2)) {
-        close_client();
-        return false;
-    }
-
-    // 4. Read Optional FFTs
+    // 3. Read Optional RX FFT
     if (out_header.fft_size > 0) {
-        out_tx_fft.resize(out_header.fft_size);
         out_rx_fft.resize(out_header.fft_size);
-        if (!net_util::recv_exact(client_fd_, out_tx_fft.data(), out_header.fft_size * sizeof(float))) {
-            close_client();
-            return false;
-        }
         if (!net_util::recv_exact(client_fd_, out_rx_fft.data(), out_header.fft_size * sizeof(float))) {
             close_client();
             return false;
         }
     } else {
-        out_tx_fft.clear();
         out_rx_fft.clear();
     }
 
-    size_t total_frame_bytes = sizeof(IqFrameHeader) + (iq_samples_per_chan * sizeof(int16_t) * 4)
-                             + (out_header.fft_size * sizeof(float) * 2);
+    size_t total_frame_bytes = sizeof(IqFrameHeader) + (iq_samples * sizeof(int16_t) * 2)
+                             + (out_header.fft_size * sizeof(float));
     frames_received_.fetch_add(1);
     bytes_received_.fetch_add(total_frame_bytes);
     return true;

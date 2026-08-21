@@ -67,12 +67,8 @@ int main(int argc, char* argv[])
     // Worker thread: Receives sc16 from S1 -> converts & scales to float -> feeds 4-channel demux -> encodes to sc16 -> sends to S3
     std::thread relay_thread([&]() {
         IqFrameHeader hdr;
-        std::vector<int16_t> tx_sc16;
         std::vector<int16_t> rx_sc16;
-        std::vector<float> tx_fft;
         std::vector<float> rx_fft;
-
-        std::vector<std::complex<float>> tx_scaled;
         std::vector<std::complex<float>> rx_scaled;
 
         bool prev_bursting = false;
@@ -83,8 +79,8 @@ int main(int argc, char* argv[])
         uint64_t frame_counter = 0;
 
         while (!stop_flag.load()) {
-            if (!receiver.recv_frame(hdr, tx_sc16, rx_sc16, tx_fft, rx_fft)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (!receiver.recv_frame(hdr, rx_sc16, rx_fft)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
                 continue;
             }
 
@@ -126,11 +122,8 @@ int main(int argc, char* argv[])
 
             // Process, scale IQ (x2, x3, x4), route to 4 channels and route direct FFTs
             float multiplier = demux.process_incoming_frame(hdr,
-                                                           tx_sc16.data(),
                                                            rx_sc16.data(),
-                                                           tx_fft.empty() ? nullptr : tx_fft.data(),
                                                            rx_fft.empty() ? nullptr : rx_fft.data(),
-                                                           tx_scaled,
                                                            rx_scaled);
 
             // Update status metrics
@@ -148,10 +141,8 @@ int main(int argc, char* argv[])
                 sender->send_frame(hdr.timestamp_ns,
                                    hdr.center_freq_hz,
                                    is_bursting,
-                                   tx_scaled.data(),
                                    rx_scaled.data(),
                                    hdr.sample_count,
-                                   tx_fft.empty() ? nullptr : tx_fft.data(),
                                    rx_fft.empty() ? nullptr : rx_fft.data(),
                                    hdr.fft_size,
                                    multiplier,

@@ -50,12 +50,8 @@ int main(int argc, char* argv[])
     // Worker thread: Receives scaled sc16 from S2 -> converts to float -> feeds 4-channel demux & GUI
     std::thread sink_thread([&]() {
         IqFrameHeader hdr;
-        std::vector<int16_t> tx_sc16;
         std::vector<int16_t> rx_sc16;
-        std::vector<float> tx_fft;
         std::vector<float> rx_fft;
-
-        std::vector<std::complex<float>> tx_scaled;
         std::vector<std::complex<float>> rx_scaled;
 
         bool prev_bursting = false;
@@ -66,8 +62,8 @@ int main(int argc, char* argv[])
         uint64_t frame_counter = 0;
 
         while (!stop_flag.load()) {
-            if (!receiver.recv_frame(hdr, tx_sc16, rx_sc16, tx_fft, rx_fft)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (!receiver.recv_frame(hdr, rx_sc16, rx_fft)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
                 continue;
             }
 
@@ -109,11 +105,8 @@ int main(int argc, char* argv[])
 
             // Decode scaled sc16 to float, route to 4 channels and route direct FFTs
             demux.process_incoming_frame(hdr,
-                                         tx_sc16.data(),
                                          rx_sc16.data(),
-                                         tx_fft.empty() ? nullptr : tx_fft.data(),
                                          rx_fft.empty() ? nullptr : rx_fft.data(),
-                                         tx_scaled,
                                          rx_scaled);
 
             // Update status metrics

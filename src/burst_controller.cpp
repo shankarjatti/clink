@@ -62,14 +62,11 @@ void BurstController::stop()
 
 void BurstController::net_stream_loop()
 {
-    std::vector<std::complex<float>> tx_buf(spb_);
     std::vector<std::complex<float>> rx_buf(spb_);
 
     constexpr size_t kFftLen = 4096;
-    FftProcessor tx_fft(kFftLen);
     FftProcessor rx_fft(kFftLen);
     std::vector<std::complex<float>> fft_scratch(kFftLen);
-    std::vector<float> tx_fft_db(kFftLen);
     std::vector<float> rx_fft_db(kFftLen);
     std::vector<float> dummy_freq(kFftLen);
 
@@ -81,31 +78,20 @@ void BurstController::net_stream_loop()
             continue;
         }
 
-        size_t n_tx = tx_ring_.read_latest(tx_buf.data(), tx_buf.size());
         size_t n_rx = rx_ring_.read_latest(rx_buf.data(), rx_buf.size());
-
-        if (n_tx < tx_buf.size()) {
-            std::fill(tx_buf.begin() + n_tx, tx_buf.end(), std::complex<float>(0.0f, 0.0f));
-        }
         if (n_rx < rx_buf.size()) {
             std::fill(rx_buf.begin() + n_rx, rx_buf.end(), std::complex<float>(0.0f, 0.0f));
         }
 
-        const float* tx_fft_ptr = nullptr;
         const float* rx_fft_ptr = nullptr;
         size_t send_fft_len = 0;
 
-        // Compute and attach FFT spectra every ~3ms (~333 Hz)
+        // Compute and attach RX FFT spectrum every ~3ms (~333 Hz)
         if (++iter % 3 == 0) {
-            size_t nft = tx_ring_.read_latest(fft_scratch.data(), kFftLen);
-            if (nft < kFftLen) std::fill(fft_scratch.begin() + nft, fft_scratch.end(), std::complex<float>(0.0f, 0.0f));
-            tx_fft.compute(fft_scratch.data(), tx_fft_db, usrp_.sample_rate(), dummy_freq);
-
             size_t nfr = rx_ring_.read_latest(fft_scratch.data(), kFftLen);
             if (nfr < kFftLen) std::fill(fft_scratch.begin() + nfr, fft_scratch.end(), std::complex<float>(0.0f, 0.0f));
             rx_fft.compute(fft_scratch.data(), rx_fft_db, usrp_.sample_rate(), dummy_freq);
 
-            tx_fft_ptr = tx_fft_db.data();
             rx_fft_ptr = rx_fft_db.data();
             send_fft_len = kFftLen;
         }
@@ -129,8 +115,8 @@ void BurstController::net_stream_loop()
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count());
         net_sender_->send_frame(ts_ns, freq, is_bursting_.load(),
-                                tx_buf.data(), rx_buf.data(), spb_,
-                                tx_fft_ptr, rx_fft_ptr, send_fft_len, 1.0f,
+                                rx_buf.data(), spb_,
+                                rx_fft_ptr, send_fft_len, 1.0f,
                                 elevation_deg, azimuth_deg);
 
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>((spb_ * 1e6) / usrp_.sample_rate())));

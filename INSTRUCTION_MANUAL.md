@@ -15,10 +15,10 @@ This manual provides complete step-by-step instructions on how to build, configu
 |     * 2.4 GHz: Elevation = 30.0°, Azimuth = 40.0°                                 |
 |     * 5.1 GHz: Elevation = 50.0°, Azimuth = 60.0°                                 |
 |     * 5.8 GHz: Elevation = 60.0°, Azimuth = 70.0°                                 |
-| - Encodes IQ to signed 16-bit (`sc16`) wire format                                |
+| - Encodes received RX IQ to signed 16-bit (`sc16`) wire format                    |
 | - Streams over TCP with `TCP_NODELAY` to System 2 (Port 5000)                     |
 +-----------------------------------------------------------------------------------+
-                                         |  TCP Port 5000 (Unscaled sc16 + FFTs + Angles)
+                                         |  TCP Port 5000 (Unscaled RX sc16 + RX FFT + Angles)
                                          v
 +-----------------------------------------------------------------------------------+
 | System 2: Relay & 12-Plot Matrix Monitor (`usrp_relay_gui`)                       |

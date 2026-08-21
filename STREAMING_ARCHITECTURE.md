@@ -47,12 +47,10 @@ struct IqFrameHeader {
 #pragma pack(pop)
 ```
 
-### Full Wire Payload Layout
+### Full Wire Payload Layout (RX-Only Optimized)
 ```text
-[ IqFrameHeader ]
-[ TX sc16 data: sample_count * 4 bytes ]
+[ IqFrameHeader: 44 bytes ]
 [ RX sc16 data: sample_count * 4 bytes ]
-[ (Optional) TX FFT float data: fft_size * 4 bytes ]
 [ (Optional) RX FFT float data: fft_size * 4 bytes ]
 ```
 

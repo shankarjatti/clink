@@ -39,13 +39,10 @@ public:
     // Ingests incoming TCP frame, decodes sc16 to float, applies band multiplier,
     // routes to dedicated band channel (Ch 1, 2, or 3) and combined channel (Ch 4),
     // and stores received original FFT spectra.
-    // Returns the scaled float buffers (tx_scaled, rx_scaled) and the applied multiplier.
+    // Returns the applied multiplier and updates out_rx_scaled.
     float process_incoming_frame(const IqFrameHeader& hdr,
-                                 const int16_t* tx_sc16,
                                  const int16_t* rx_sc16,
-                                 const float* tx_fft_db,
                                  const float* rx_fft_db,
-                                 std::vector<std::complex<float>>& out_tx_scaled,
                                  std::vector<std::complex<float>>& out_rx_scaled);
 
     ChannelData& ch1() { return ch1_; } // 2.4 GHz (x2.0)
