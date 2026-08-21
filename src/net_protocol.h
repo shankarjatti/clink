@@ -29,10 +29,11 @@ struct IqFrameHeader
     uint64_t timestamp_ns;    // USRP timestamp in nanoseconds
     double   center_freq_hz;  // Active RF carrier frequency (e.g. 2.4e9, 5.1e9, 5.8e9)
     float    iq_multiplier;   // 1.0 at S1 -> S2; 2.0 / 3.0 / 4.0 at S2 -> S3
+    float    elevation_deg;   // Elevation angle in degrees (e.g. 30.0, 50.0, 60.0)
+    float    azimuth_deg;     // Azimuth angle in degrees (e.g. 40.0, 60.0, 70.0)
     uint32_t sample_count;    // Number of complex samples per channel in this frame
     uint32_t fft_size;        // FFT points (e.g. 4096, or 0 if no FFT vector in this frame)
     uint32_t is_bursting;     // 1 during active TX burst, 0 during silence
-    uint32_t reserved;        // Padding for 64-bit alignment
 };
 #pragma pack(pop)
 

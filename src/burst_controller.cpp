@@ -110,10 +110,26 @@ void BurstController::net_stream_loop()
             send_fft_len = kFftLen;
         }
 
+        double freq = current_freq_hz_.load();
+        float elevation_deg = 30.0f;
+        float azimuth_deg = 40.0f;
+
+        if (std::abs(freq - 2.4e9) < 200e6) {
+            elevation_deg = 30.0f;
+            azimuth_deg = 40.0f;
+        } else if (std::abs(freq - 5.1e9) < 200e6) {
+            elevation_deg = 50.0f;
+            azimuth_deg = 60.0f;
+        } else if (std::abs(freq - 5.8e9) < 200e6) {
+            elevation_deg = 60.0f;
+            azimuth_deg = 70.0f;
+        }
+
         uint64_t ts_ns = static_cast<uint64_t>(usrp_.now().get_real_secs() * 1e9);
-        net_sender_->send_frame(ts_ns, current_freq_hz_.load(), is_bursting_.load(),
+        net_sender_->send_frame(ts_ns, freq, is_bursting_.load(),
                                 tx_buf.data(), rx_buf.data(), spb_,
-                                tx_fft_ptr, rx_fft_ptr, send_fft_len, 1.0f);
+                                tx_fft_ptr, rx_fft_ptr, send_fft_len, 1.0f,
+                                elevation_deg, azimuth_deg);
 
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>((spb_ * 1e6) / usrp_.sample_rate())));
     }

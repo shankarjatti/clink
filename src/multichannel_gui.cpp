@@ -189,6 +189,72 @@ void MultichannelGui::draw_direct_fft_plot(const char* title, ChannelData& ch_da
     }
 }
 
+void MultichannelGui::draw_polar_map_plot(const char* title, float elevation_deg, float azimuth_deg)
+{
+    if (ImPlot::BeginPlot(title, ImVec2(-1, -1), ImPlotFlags_Equal)) {
+        ImPlot::SetupAxes("X (East)", "Y (North)", ImPlotAxisFlags_NoGridLines, ImPlotAxisFlags_NoGridLines);
+        ImPlot::SetupAxisLimits(ImAxis_X1, -95.0, 95.0, ImGuiCond_Always);
+        ImPlot::SetupAxisLimits(ImAxis_Y1, -95.0, 95.0, ImGuiCond_Always);
+
+        // Precompute concentric range rings (30 deg, 60 deg, 90 deg max)
+        constexpr int kRingPts = 64;
+        static float ring_x[3][kRingPts + 1];
+        static float ring_y[3][kRingPts + 1];
+        static bool s_rings_init = false;
+        if (!s_rings_init) {
+            float radii[3] = {30.0f, 60.0f, 90.0f};
+            for (int r = 0; r < 3; ++r) {
+                for (int p = 0; p <= kRingPts; ++p) {
+                    float theta = static_cast<float>(p * 2.0 * M_PI / kRingPts);
+                    ring_x[r][p] = radii[r] * std::cos(theta);
+                    ring_y[r][p] = radii[r] * std::sin(theta);
+                }
+            }
+            s_rings_init = true;
+        }
+
+        // Plot Range Rings
+        ImPlot::SetNextLineStyle(ImVec4(0.3f, 0.4f, 0.5f, 0.35f), 1.0f);
+        ImPlot::PlotLine("##R30", ring_x[0], ring_y[0], kRingPts + 1);
+        ImPlot::SetNextLineStyle(ImVec4(0.3f, 0.4f, 0.5f, 0.35f), 1.0f);
+        ImPlot::PlotLine("##R60", ring_x[1], ring_y[1], kRingPts + 1);
+        ImPlot::SetNextLineStyle(ImVec4(0.4f, 0.6f, 0.8f, 0.6f), 1.5f);
+        ImPlot::PlotLine("##R90", ring_x[2], ring_y[2], kRingPts + 1);
+
+        // Crosshairs
+        static float axis_ns_x[2] = {0.0f, 0.0f};
+        static float axis_ns_y[2] = {-90.0f, 90.0f};
+        static float axis_ew_x[2] = {-90.0f, 90.0f};
+        static float axis_ew_y[2] = {0.0f, 0.0f};
+        ImPlot::SetNextLineStyle(ImVec4(0.3f, 0.4f, 0.5f, 0.3f), 1.0f);
+        ImPlot::PlotLine("##AxisNS", axis_ns_x, axis_ns_y, 2);
+        ImPlot::SetNextLineStyle(ImVec4(0.3f, 0.4f, 0.5f, 0.3f), 1.0f);
+        ImPlot::PlotLine("##AxisEW", axis_ew_x, axis_ew_y, 2);
+
+        // Convert (Elevation, Azimuth) to Cartesian coordinates
+        float rad = azimuth_deg * static_cast<float>(M_PI / 180.0);
+        float target_r = elevation_deg;
+        float target_x = target_r * std::sin(rad);
+        float target_y = target_r * std::cos(rad);
+
+        // Bearing vector line
+        float line_x[2] = {0.0f, target_x};
+        float line_y[2] = {0.0f, target_y};
+        ImPlot::SetNextLineStyle(ImVec4(0.2f, 1.0f, 0.4f, 0.8f), 2.0f);
+        ImPlot::PlotLine("Bearing", line_x, line_y, 2);
+
+        // Target marker
+        float pt_x[1] = {target_x};
+        float pt_y[1] = {target_y};
+        ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 8.0f, ImVec4(1.0f, 0.3f, 0.2f, 1.0f), 2.0f, ImVec4(1.0f, 0.9f, 0.2f, 1.0f));
+        char pt_label[64];
+        std::snprintf(pt_label, sizeof(pt_label), "El: %.0f°, Az: %.0f°", elevation_deg, azimuth_deg);
+        ImPlot::PlotScatter(pt_label, pt_x, pt_y, 1);
+
+        ImPlot::EndPlot();
+    }
+}
+
 void MultichannelGui::draw_frame()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -205,8 +271,8 @@ void MultichannelGui::draw_frame()
     double active_carrier_mhz = status_.current_freq_hz() / 1e6;
 
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    // 4 Rows x 2 Columns = 8 Plots Total
-    if (ImPlot::BeginSubplots("##8Plots", 4, 2, avail)) {
+    // 4 Rows x 3 Columns = 12 Plots Total
+    if (ImPlot::BeginSubplots("##12Plots", 4, 3, avail)) {
         // Row 1: Channel 1 (2.4 GHz - x2.0)
         draw_channel_waveform("Ch 1 IQ (2.4 GHz - x2.0)", demux_.ch1().rx_ring,
                               ch_scratch_[0].wave_scratch, ch_scratch_[0].i_buf, ch_scratch_[0].q_buf,
@@ -214,6 +280,7 @@ void MultichannelGui::draw_frame()
         draw_direct_fft_plot("Ch 1 FFT (Direct 2.4 GHz)", demux_.ch1(),
                              ch_scratch_[0].fft_db, ch_scratch_[0].fft_freq,
                              2400.0, ch_scratch_[0].last_carrier_mhz);
+        draw_polar_map_plot("Ch 1 Polar Map (2.4 GHz)", demux_.ch1().elevation_deg, demux_.ch1().azimuth_deg);
 
         // Row 2: Channel 2 (5.1 GHz - x3.0)
         draw_channel_waveform("Ch 2 IQ (5.1 GHz - x3.0)", demux_.ch2().rx_ring,
@@ -222,6 +289,7 @@ void MultichannelGui::draw_frame()
         draw_direct_fft_plot("Ch 2 FFT (Direct 5.1 GHz)", demux_.ch2(),
                              ch_scratch_[1].fft_db, ch_scratch_[1].fft_freq,
                              5100.0, ch_scratch_[1].last_carrier_mhz);
+        draw_polar_map_plot("Ch 2 Polar Map (5.1 GHz)", demux_.ch2().elevation_deg, demux_.ch2().azimuth_deg);
 
         // Row 3: Channel 3 (5.8 GHz - x4.0)
         draw_channel_waveform("Ch 3 IQ (5.8 GHz - x4.0)", demux_.ch3().rx_ring,
@@ -230,6 +298,7 @@ void MultichannelGui::draw_frame()
         draw_direct_fft_plot("Ch 3 FFT (Direct 5.8 GHz)", demux_.ch3(),
                              ch_scratch_[2].fft_db, ch_scratch_[2].fft_freq,
                              5800.0, ch_scratch_[2].last_carrier_mhz);
+        draw_polar_map_plot("Ch 3 Polar Map (5.8 GHz)", demux_.ch3().elevation_deg, demux_.ch3().azimuth_deg);
 
         // Row 4: Channel 4 (Combined Scaled)
         draw_channel_waveform("Ch 4 IQ (Combined Scaled)", demux_.ch4().rx_ring,
@@ -238,6 +307,7 @@ void MultichannelGui::draw_frame()
         draw_direct_fft_plot("Ch 4 FFT (Active Band)", demux_.ch4(),
                              ch_scratch_[3].fft_db, ch_scratch_[3].fft_freq,
                              active_carrier_mhz, ch_scratch_[3].last_carrier_mhz);
+        draw_polar_map_plot("Ch 4 Polar Map (Active Band)", demux_.ch4().elevation_deg, demux_.ch4().azimuth_deg);
 
         ImPlot::EndSubplots();
     }

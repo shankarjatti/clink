@@ -98,7 +98,8 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
                              const std::complex<float>* tx_iq, const std::complex<float>* rx_iq,
                              size_t sample_count,
                              const float* tx_fft_db, const float* rx_fft_db,
-                             size_t fft_size, float iq_multiplier)
+                             size_t fft_size, float iq_multiplier,
+                             float elevation_deg, float azimuth_deg)
 {
     if (!is_connected_.load()) {
         return false;
@@ -127,10 +128,11 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
     hdr.timestamp_ns = timestamp_ns;
     hdr.center_freq_hz = center_freq_hz;
     hdr.iq_multiplier = iq_multiplier;
+    hdr.elevation_deg = elevation_deg;
+    hdr.azimuth_deg = azimuth_deg;
     hdr.sample_count = static_cast<uint32_t>(sample_count);
     hdr.fft_size = (tx_fft_db && rx_fft_db) ? static_cast<uint32_t>(fft_size) : 0;
     hdr.is_bursting = is_bursting ? 1 : 0;
-    hdr.reserved = 0;
 
     size_t iq_bytes_per_chan = sample_count * sizeof(int16_t) * 2;
     size_t fft_bytes_per_chan = hdr.fft_size * sizeof(float);
@@ -176,7 +178,8 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
                                   const int16_t* tx_sc16, const int16_t* rx_sc16,
                                   size_t sample_count,
                                   const float* tx_fft_db, const float* rx_fft_db,
-                                  size_t fft_size, float iq_multiplier)
+                                  size_t fft_size, float iq_multiplier,
+                                  float elevation_deg, float azimuth_deg)
 {
     if (!is_connected_.load()) {
         return false;
@@ -193,10 +196,11 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
     hdr.timestamp_ns = timestamp_ns;
     hdr.center_freq_hz = center_freq_hz;
     hdr.iq_multiplier = iq_multiplier;
+    hdr.elevation_deg = elevation_deg;
+    hdr.azimuth_deg = azimuth_deg;
     hdr.sample_count = static_cast<uint32_t>(sample_count);
     hdr.fft_size = (tx_fft_db && rx_fft_db) ? static_cast<uint32_t>(fft_size) : 0;
     hdr.is_bursting = is_bursting ? 1 : 0;
-    hdr.reserved = 0;
 
     size_t iq_bytes_per_chan = sample_count * sizeof(int16_t) * 2;
     size_t fft_bytes_per_chan = hdr.fft_size * sizeof(float);

@@ -102,7 +102,7 @@ int main(int argc, char* argv[])
             prev_bursting = is_bursting;
             net_status.set_rx_overflow(receiver.dropped_frames());
 
-            // Forward scaled float samples encoded as sc16 + direct FFTs to System 3
+            // Forward scaled float samples encoded as sc16 + direct FFTs + angles to System 3
             if (sender && sender->is_connected()) {
                 sender->send_frame(hdr.timestamp_ns,
                                    hdr.center_freq_hz,
@@ -113,14 +113,16 @@ int main(int argc, char* argv[])
                                    tx_fft.empty() ? nullptr : tx_fft.data(),
                                    rx_fft.empty() ? nullptr : rx_fft.data(),
                                    hdr.fft_size,
-                                   multiplier);
+                                   multiplier,
+                                   hdr.elevation_deg,
+                                   hdr.azimuth_deg);
             }
         }
     });
 
-    // Launch 8-plot GUI window on System 2
+    // Launch 4x3 Monitor GUI window on System 2
     {
-        MultichannelGui gui(net_status, demux, kSampleRateHz, "USRP B210 Relay Monitor (System 2 - 8 Plots)");
+        MultichannelGui gui(net_status, demux, kSampleRateHz, "USRP B210 Relay Monitor (System 2 - 12 Plots)");
         gui.run();
     }
 

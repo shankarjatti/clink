@@ -60,6 +60,8 @@ private:
                          double& last_carrier_mhz,
                          float& out_peak_db, double& out_peak_mhz);
 
+    void render_polar_map_plot(const char* plot_id, float elevation_deg, float azimuth_deg);
+
     IMonitorStatus& status_;
     MultichannelDemux& demux_;
     double sample_rate_hz_;

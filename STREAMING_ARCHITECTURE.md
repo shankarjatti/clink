@@ -17,18 +17,19 @@ This document tracks all critical system parameters, network protocol layouts, R
 | **Default TX Gain** | `65.0 dB` (Constant) | Constant across 2.4 GHz, 5.1 GHz, 5.8 GHz |
 
 ### Calibrated Band Table & Channel Multipliers
-| Channel | Band Center | TX Gain | RX Gain | Base Peak Amp | Multiplier | Scaled Peak Amp |
-|---|---|---|---|---|---|---|
-| **Channel 1** | **2.4 GHz** | `65.0 dB` | `51.0 dB` | $\approx 1.0\text{ V}$ | **$\times 2.0$** | **$\approx \pm 2.0\text{ V}$** |
-| **Channel 2** | **5.1 GHz** | `65.0 dB` | `61.0 dB` | $\approx 1.0\text{ V}$ | **$\times 3.0$** | **$\approx \pm 3.0\text{ V}$** |
-| **Channel 3** | **5.8 GHz** | `65.0 dB` | `63.0 dB` | $\approx 1.0\text{ V}$ | **$\times 4.0$** | **$\approx \pm 4.0\text{ V}$** |
-| **Channel 4** | **Combined**| `65.0 dB` | Dynamic | $\approx 1.0\text{ V}$ | **Dynamic** | **$\pm 2.0 / \pm 3.0 / \pm 4.0\text{ V}$** |
+### Calibrated Band Table & Channel Multipliers / Polar Angles
+| Channel | Band Center | TX Gain | RX Gain | Base Peak Amp | Multiplier | Scaled Peak Amp | Elevation ($\theta_{el}$) | Azimuth ($\theta_{az}$) |
+|---|---|---|---|---|---|---|---|---|
+| **Channel 1** | **2.4 GHz** | `65.0 dB` | `51.0 dB` | $\approx 1.0\text{ V}$ | **$\times 2.0$** | **$\approx \pm 2.0\text{ V}$** | **$30.0^\circ$** | **$40.0^\circ$** |
+| **Channel 2** | **5.1 GHz** | `65.0 dB` | `61.0 dB` | $\approx 1.0\text{ V}$ | **$\times 3.0$** | **$\approx \pm 3.0\text{ V}$** | **$50.0^\circ$** | **$60.0^\circ$** |
+| **Channel 3** | **5.8 GHz** | `65.0 dB` | `63.0 dB` | $\approx 1.0\text{ V}$ | **$\times 4.0$** | **$\approx \pm 4.0\text{ V}$** | **$60.0^\circ$** | **$70.0^\circ$** |
+| **Channel 4** | **Combined**| `65.0 dB` | Dynamic | $\approx 1.0\text{ V}$ | **Dynamic** | **$\pm 2.0 / \pm 3.0 / \pm 4.0\text{ V}$** | **Dynamic** | **Dynamic** |
 
 ---
 
 ## 2. Network Protocol Specification (`net_protocol.h`)
 
-### Frame Header Structure (`IqFrameHeader` — 32 Bytes)
+### Frame Header Structure (`IqFrameHeader`)
 ```cpp
 #pragma pack(push, 1)
 struct IqFrameHeader {
@@ -37,17 +38,18 @@ struct IqFrameHeader {
     uint64_t timestamp_ns;    // USRP / system hardware timestamp
     double   center_freq_hz;  // Active RF carrier frequency (2.4e9, 5.1e9, 5.8e9)
     float    iq_multiplier;   // 1.0 at S1 -> S2; 2.0 / 3.0 / 4.0 at S2 -> S3
+    float    elevation_deg;   // Fixed elevation angle (30.0, 50.0, 60.0)
+    float    azimuth_deg;     // Fixed azimuth angle (40.0, 60.0, 70.0)
     uint32_t sample_count;    // Complex samples per channel (e.g. 2000)
     uint32_t fft_size;        // FFT points (e.g. 4096 or 0)
     uint32_t is_bursting;     // 1 during active burst, 0 during silence
-    uint32_t reserved;        // 64-bit alignment padding
 };
 #pragma pack(pop)
 ```
 
 ### Full Wire Payload Layout
 ```text
-[ 32-byte IqFrameHeader ]
+[ IqFrameHeader ]
 [ TX sc16 data: sample_count * 4 bytes ]
 [ RX sc16 data: sample_count * 4 bytes ]
 [ (Optional) TX FFT float data: fft_size * 4 bytes ]
@@ -62,25 +64,26 @@ struct IqFrameHeader {
 +-----------------------------------------------------------------------------------+
 | System 1 (Source)                                                                 |
 | Captures SDR float IQ -> Encodes to sc16 -> TCP_NODELAY stream to System 2        |
+| (Attaches fixed Elevation/Azimuth degrees per RF carrier)                         |
 +-----------------------------------------------------------------------------------+
-                                         |  TCP Port 5000 (Unscaled sc16 + FFTs)
+                                         |  TCP Port 5000 (Unscaled sc16 + FFTs + Angles)
                                          v
 +-----------------------------------------------------------------------------------+
-| System 2 (Relay, Scaler & 8-Plot GUI)                                             |
+| System 2 (Relay, Scaler & 12-Plot 4x3 Grid Monitor)                               |
 | 1. Receives sc16 -> Converts to float                                             |
 | 2. Multiplies IQ by band factor (2.4G x2, 5.1G x3, 5.8G x4)                       |
 | 3. Direct FFT routing (no multiplier, zero recomputation)                         |
-| 4. Renders live 8-Plot GUI (4 Scaled Waveforms + 4 Direct FFTs)                  |
+| 4. Renders live 4x3 Matrix GUI (4 Waveforms + 4 FFTs + 4 Polar Radar Maps)       |
 | 5. Encodes scaled float to sc16 -> TCP_NODELAY stream to System 3                 |
 +-----------------------------------------------------------------------------------+
-                                         |  TCP Port 6001 (Scaled sc16 + FFTs)
+                                         |  TCP Port 6001 (Scaled sc16 + FFTs + Angles)
                                          v
 +-----------------------------------------------------------------------------------+
 | System 3 (Sink & Operator Console GUI)                                            |
 | 1. Receives scaled sc16 stream from System 2                                      |
 | 2. Converts sc16 to scaled float                                                  |
-| 3. Direct FFT routing                                                             |
-| 4. Renders Operator Console with Left Sidebar Tabs (2.4G, 5.1G, 5.8G, All)        |
+| 3. Direct FFT and Polar Angle routing                                             |
+| 4. Renders Operator Console: Sidebar Tabs + 1x3 Focused View (Wave, FFT, Polar)  |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -88,31 +91,18 @@ struct IqFrameHeader {
 
 ## 4. User Interface Architecture
 
-### System 2: 8-Plot Matrix Grid ($4 \times 2$)
-Renders all 4 channels (Waveform + FFT) simultaneously in a compact multi-row layout for continuous relay monitoring.
+### System 2: 12-Plot Matrix Grid ($4 \times 3$)
+Renders all 4 channels simultaneously in a $4 \times 3$ grid:
+- **Column 1**: Scaled IQ Waveforms (`[-4V, 4V]`, `[-6V, 6V]`, `[-8V, 8V]`)
+- **Column 2**: Direct RF FFT Spectra (`2400 MHz`, `5100 MHz`, `5800 MHz`)
+- **Column 3**: Polar Radar Maps (Range rings $30^\circ, 60^\circ, 90^\circ$, target bearing blip at $(El, Az)$)
 
-### System 3: Modern Operator Console (Sidebar Navigation & Focused Views)
-Features an operator-focused layout with a left navigation sidebar, top telemetry bar, and expanded high-resolution plot views:
-
-```text
-+-----------------------------------------------------------------------------------------------------------------------+
-|  TOP STATUS BAR: Carrier: 2.400 GHz | [ BURST ACTIVE ] | Multiplier: x2.0 | Rate: 2.0 MS/s | Bursts: 42 | Loss: 0     |
-+-----------------------+-----------------------------------------------------------------------------------------------+
-|  OPERATOR CHANNELS    |                                                                                               |
-|                       |  [ CHANNEL 1: 2.4 GHz BAND (Multiplier: x2.0) ]                                               |
-|  [>] 2.4 GHz (x2.0)   |                                                                                               |
-|      Status: Active   |  +---------------------------------------+  +-----------------------------------------------+ |
-|                       |  |  IQ Waveform (Scaled x2.0)            |  |  FFT Spectrum (2400.000 MHz)                  | |
-|  [ ] 5.1 GHz (x3.0)   |  |  - High-resolution I & Q Waveform     |  |  - Direct Received FFT Spectrum               | |
-|      Status: Standby  |  |  - Amplitude Range: [-4.0V, 4.0V]     |  |  - Peak Tone at 2400.010 MHz                  | |
-|                       |  +---------------------------------------+  +-----------------------------------------------+ |
-|  [ ] 5.8 GHz (x4.0)   |                                                                                               |
-|      Status: Standby  |  -- Live Channel Metrics -------------------------------------------------------------------  |
-|                       |  Peak Voltage: 1.98 V | Multiplier: 2.0x | Peak Power: -42.1 dB | RF Center: 2400.000 MHz     |
-|  [ ] All Channels     |                                                                                               |
-|      Composite Stream |                                                                                               |
-+-----------------------+-----------------------------------------------------------------------------------------------+
-```
+### System 3: Modern Operator Console ($1 \times 3$ Focused Layout)
+Features a dedicated sidebar with 2.4 GHz, 5.1 GHz, 5.8 GHz, and All Channels tabs. Each focused tab displays a high-resolution $1 \times 3$ layout:
+1. **Scaled IQ Waveform** (Left)
+2. **Direct RF Spectrum** (Center)
+3. **Polar Radar Map** (Right, showing Target Bearing at fixed $(El, Az)$)
+4. **Live Channel Diagnostics Card** (Peak Voltage, Peak Tone Power, Tone Frequency, Bearing Angles)
 
 ---
 

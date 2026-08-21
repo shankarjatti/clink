@@ -11,18 +11,26 @@ MultichannelDemux::MultichannelDemux()
     ch1_.label = "Channel 1 (2.4 GHz - x2.0)";
     ch1_.center_freq_hz = 2.4e9;
     ch1_.multiplier = 2.0f;
+    ch1_.elevation_deg = 30.0f;
+    ch1_.azimuth_deg = 40.0f;
 
     ch2_.label = "Channel 2 (5.1 GHz - x3.0)";
     ch2_.center_freq_hz = 5.1e9;
     ch2_.multiplier = 3.0f;
+    ch2_.elevation_deg = 50.0f;
+    ch2_.azimuth_deg = 60.0f;
 
     ch3_.label = "Channel 3 (5.8 GHz - x4.0)";
     ch3_.center_freq_hz = 5.8e9;
     ch3_.multiplier = 4.0f;
+    ch3_.elevation_deg = 60.0f;
+    ch3_.azimuth_deg = 70.0f;
 
     ch4_.label = "Channel 4 (Combined Scaled)";
     ch4_.center_freq_hz = 2.4e9;
     ch4_.multiplier = 1.0f;
+    ch4_.elevation_deg = 30.0f;
+    ch4_.azimuth_deg = 40.0f;
 
     zero_chunk_.resize(4096, std::complex<float>(0.0f, 0.0f));
 }
@@ -80,11 +88,13 @@ float MultichannelDemux::process_incoming_frame(const IqFrameHeader& hdr,
         zero_chunk_.resize(count, std::complex<float>(0.0f, 0.0f));
     }
 
-    // 2. Route scaled samples to the active channel's ring buffers
+    // 2. Route scaled samples and angles to the active channel's ring buffers
     channel(band_idx).tx_ring.write(out_tx_scaled.data(), count);
     channel(band_idx).rx_ring.write(out_rx_scaled.data(), count);
     channel(band_idx).center_freq_hz = hdr.center_freq_hz;
     channel(band_idx).multiplier = multiplier;
+    channel(band_idx).elevation_deg = hdr.elevation_deg;
+    channel(band_idx).azimuth_deg = hdr.azimuth_deg;
 
     // 3. Feed flat-line zeros to the other 2 inactive band channels
     for (int b = 0; b < 3; ++b) {
@@ -94,11 +104,13 @@ float MultichannelDemux::process_incoming_frame(const IqFrameHeader& hdr,
         }
     }
 
-    // 4. Route scaled samples continuously into Channel 4 (Combined)
+    // 4. Route scaled samples and angles continuously into Channel 4 (Combined)
     ch4_.tx_ring.write(out_tx_scaled.data(), count);
     ch4_.rx_ring.write(out_rx_scaled.data(), count);
     ch4_.center_freq_hz = hdr.center_freq_hz;
     ch4_.multiplier = multiplier;
+    ch4_.elevation_deg = hdr.elevation_deg;
+    ch4_.azimuth_deg = hdr.azimuth_deg;
 
     // 5. Direct FFT routing (no multiplier, zero recomputation)
     if (hdr.fft_size > 0 && tx_fft_db && rx_fft_db) {

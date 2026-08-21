@@ -26,6 +26,8 @@ struct ChannelData
     std::mutex fft_mutex;
     double center_freq_hz{2.4e9};
     float multiplier{1.0f};
+    float elevation_deg{30.0f};
+    float azimuth_deg{40.0f};
     const char* label{"Channel"};
 };
 

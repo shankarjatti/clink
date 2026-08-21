@@ -43,6 +43,8 @@ private:
                               double default_carrier_mhz,
                               double& last_carrier_mhz);
 
+    void draw_polar_map_plot(const char* title, float elevation_deg, float azimuth_deg);
+
     IMonitorStatus& status_;
     MultichannelDemux& demux_;
     double sample_rate_hz_;
