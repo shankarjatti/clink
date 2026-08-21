@@ -9,6 +9,7 @@
 #include <complex>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -32,13 +33,13 @@ public:
                     const std::complex<float>* tx_iq, const std::complex<float>* rx_iq,
                     size_t sample_count,
                     const float* tx_fft_db = nullptr, const float* rx_fft_db = nullptr,
-                    size_t fft_size = 0);
+                    size_t fft_size = 0, float iq_multiplier = 1.0f);
 
     bool send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
                          const int16_t* tx_sc16, const int16_t* rx_sc16,
                          size_t sample_count,
                          const float* tx_fft_db = nullptr, const float* rx_fft_db = nullptr,
-                         size_t fft_size = 0);
+                         size_t fft_size = 0, float iq_multiplier = 1.0f);
 
 private:
     void connection_loop();
@@ -57,6 +58,7 @@ private:
     std::atomic<uint64_t> frames_sent_{0};
     std::atomic<uint64_t> bytes_sent_{0};
 
+    std::mutex send_mutex_;
     std::vector<int16_t> tx_sc16_buf_;
     std::vector<int16_t> rx_sc16_buf_;
     std::vector<uint8_t> send_packet_buf_;

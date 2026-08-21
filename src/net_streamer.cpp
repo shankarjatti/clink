@@ -35,6 +35,7 @@ void IqTcpSender::stop()
 
 void IqTcpSender::close_socket()
 {
+    std::lock_guard<std::mutex> lock(send_mutex_);
     is_connected_ = false;
     if (sock_fd_ >= 0) {
         close(sock_fd_);
@@ -44,17 +45,19 @@ void IqTcpSender::close_socket()
 
 bool IqTcpSender::connect_socket()
 {
+    std::lock_guard<std::mutex> lock(send_mutex_);
     if (sock_fd_ >= 0) {
         close(sock_fd_);
+        sock_fd_ = -1;
     }
 
-    sock_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock_fd_ < 0) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
         return false;
     }
 
-    net_util::set_tcp_nodelay(sock_fd_);
-    net_util::set_socket_buffers(sock_fd_, 4 * 1024 * 1024);
+    net_util::set_tcp_nodelay(fd);
+    net_util::set_socket_buffers(fd, 4 * 1024 * 1024);
 
     struct sockaddr_in serv_addr;
     std::memset(&serv_addr, 0, sizeof(serv_addr));
@@ -62,15 +65,16 @@ bool IqTcpSender::connect_socket()
     serv_addr.sin_port = htons(static_cast<uint16_t>(target_port_));
 
     if (inet_pton(AF_INET, target_ip_.c_str(), &serv_addr.sin_addr) <= 0) {
-        close_socket();
+        close(fd);
         return false;
     }
 
-    if (connect(sock_fd_, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)) < 0) {
-        close_socket();
+    if (connect(fd, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)) < 0) {
+        close(fd);
         return false;
     }
 
+    sock_fd_ = fd;
     is_connected_ = true;
     std::cout << "[IqTcpSender] Connected to " << target_ip_ << ":" << target_port_ << "\n";
     return true;
@@ -94,30 +98,91 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
                              const std::complex<float>* tx_iq, const std::complex<float>* rx_iq,
                              size_t sample_count,
                              const float* tx_fft_db, const float* rx_fft_db,
-                             size_t fft_size)
+                             size_t fft_size, float iq_multiplier)
 {
+    if (!is_connected_.load()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(send_mutex_);
     if (!is_connected_.load() || sock_fd_ < 0) {
         return false;
     }
 
-    // Convert tx and rx float samples to sc16
+    // Convert tx and rx float samples to sc16 (using scaled encoder if multiplier != 1.0)
     tx_sc16_buf_.resize(sample_count * 2);
     rx_sc16_buf_.resize(sample_count * 2);
 
-    net_util::float_to_sc16(tx_iq, tx_sc16_buf_.data(), sample_count);
-    net_util::float_to_sc16(rx_iq, rx_sc16_buf_.data(), sample_count);
+    if (std::abs(iq_multiplier - 1.0f) > 1e-4f) {
+        net_util::float_to_sc16_scaled(tx_iq, tx_sc16_buf_.data(), sample_count, iq_multiplier);
+        net_util::float_to_sc16_scaled(rx_iq, rx_sc16_buf_.data(), sample_count, iq_multiplier);
+    } else {
+        net_util::float_to_sc16(tx_iq, tx_sc16_buf_.data(), sample_count);
+        net_util::float_to_sc16(rx_iq, rx_sc16_buf_.data(), sample_count);
+    }
 
-    return send_sc16_frame(timestamp_ns, center_freq_hz, is_bursting,
-                           tx_sc16_buf_.data(), rx_sc16_buf_.data(), sample_count,
-                           tx_fft_db, rx_fft_db, fft_size);
+    IqFrameHeader hdr;
+    hdr.magic = kIqFrameMagic;
+    hdr.sequence_num = seq_num_++;
+    hdr.timestamp_ns = timestamp_ns;
+    hdr.center_freq_hz = center_freq_hz;
+    hdr.iq_multiplier = iq_multiplier;
+    hdr.sample_count = static_cast<uint32_t>(sample_count);
+    hdr.fft_size = (tx_fft_db && rx_fft_db) ? static_cast<uint32_t>(fft_size) : 0;
+    hdr.is_bursting = is_bursting ? 1 : 0;
+    hdr.reserved = 0;
+
+    size_t iq_bytes_per_chan = sample_count * sizeof(int16_t) * 2;
+    size_t fft_bytes_per_chan = hdr.fft_size * sizeof(float);
+    size_t total_payload_bytes = sizeof(IqFrameHeader) + (iq_bytes_per_chan * 2) + (fft_bytes_per_chan * 2);
+
+    send_packet_buf_.resize(total_payload_bytes);
+    uint8_t* dst = send_packet_buf_.data();
+
+    // 1. Copy Header
+    std::memcpy(dst, &hdr, sizeof(IqFrameHeader));
+    dst += sizeof(IqFrameHeader);
+
+    // 2. Copy TX sc16
+    std::memcpy(dst, tx_sc16_buf_.data(), iq_bytes_per_chan);
+    dst += iq_bytes_per_chan;
+
+    // 3. Copy RX sc16
+    std::memcpy(dst, rx_sc16_buf_.data(), iq_bytes_per_chan);
+    dst += iq_bytes_per_chan;
+
+    // 4. Copy Optional FFT vectors
+    if (hdr.fft_size > 0) {
+        std::memcpy(dst, tx_fft_db, fft_bytes_per_chan);
+        dst += fft_bytes_per_chan;
+        std::memcpy(dst, rx_fft_db, fft_bytes_per_chan);
+        dst += fft_bytes_per_chan;
+    }
+
+    if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
+        std::cerr << "[IqTcpSender] send failed, closing connection\n";
+        is_connected_ = false;
+        close(sock_fd_);
+        sock_fd_ = -1;
+        return false;
+    }
+
+    frames_sent_.fetch_add(1);
+    bytes_sent_.fetch_add(total_payload_bytes);
+    return true;
 }
 
 bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
                                   const int16_t* tx_sc16, const int16_t* rx_sc16,
                                   size_t sample_count,
                                   const float* tx_fft_db, const float* rx_fft_db,
-                                  size_t fft_size)
+                                  size_t fft_size, float iq_multiplier)
 {
+    if (!is_connected_.load()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(send_mutex_);
     if (!is_connected_.load() || sock_fd_ < 0) {
         return false;
     }
@@ -127,6 +192,7 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
     hdr.sequence_num = seq_num_++;
     hdr.timestamp_ns = timestamp_ns;
     hdr.center_freq_hz = center_freq_hz;
+    hdr.iq_multiplier = iq_multiplier;
     hdr.sample_count = static_cast<uint32_t>(sample_count);
     hdr.fft_size = (tx_fft_db && rx_fft_db) ? static_cast<uint32_t>(fft_size) : 0;
     hdr.is_bursting = is_bursting ? 1 : 0;
@@ -161,7 +227,9 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
 
     if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
         std::cerr << "[IqTcpSender] send failed, closing connection\n";
-        close_socket();
+        is_connected_ = false;
+        close(sock_fd_);
+        sock_fd_ = -1;
         return false;
     }
 
@@ -195,6 +263,9 @@ void IqTcpReceiver::start()
 
     int opt = 1;
     setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+    setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
 
     struct sockaddr_in addr;
     std::memset(&addr, 0, sizeof(addr));

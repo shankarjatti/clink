@@ -1,9 +1,9 @@
 // sink_main.cpp
 //
 // System 3 Node (usrp_sink_gui):
-// 1. Receives sc16 IQ + FFT stream from System 2 over TCP with TCP_NODELAY
-// 2. Converts sc16 to complex float (fc32) and writes to local ring buffers
-// 3. Renders the exact same 2x2 live GUI plot in real time
+// 1. Receives scaled sc16 IQ + direct FFT stream from System 2 over TCP with TCP_NODELAY
+// 2. Converts sc16 to scaled float (fc32) and demultiplexes into 4 channels
+// 3. Renders the exact same 8-plot (4 Waveforms + 4 FFTs) GUI in real time
 // 4. Verifies sequence numbers, packet continuity, and 0-loss metrics
 
 #include <atomic>
@@ -14,15 +14,15 @@
 #include <thread>
 #include <vector>
 
-#include "gui.h"
+#include "multichannel_demux.h"
+#include "multichannel_gui.h"
 #include "net_protocol.h"
 #include "net_streamer.h"
-#include "ring_buffer.h"
 #include "status_provider.h"
 
 int main(int argc, char* argv[])
 {
-    int listen_port = 6000;
+    int listen_port = 6001;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -34,21 +34,20 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "=====================================================\n";
-    std::cout << "  USRP B210 Sink & Real-Time Monitor (System 3)       \n";
+    std::cout << "  USRP B210 Sink & 8-Plot Monitor (System 3)          \n";
     std::cout << "  Listening for System 2 on port: " << listen_port << "\n";
     std::cout << "=====================================================\n";
 
     constexpr double kSampleRateHz = 2e6;
-    IqRingBuffer tx_ring(1 << 16);
-    IqRingBuffer rx_ring(1 << 16);
     NetStatusProvider net_status;
+    MultichannelDemux demux;
 
     IqTcpReceiver receiver(listen_port);
     receiver.start();
 
     std::atomic<bool> stop_flag{false};
 
-    // Worker thread: Receives sc16 from S2 -> converts to float -> feeds GUI & metrics
+    // Worker thread: Receives scaled sc16 from S2 -> converts to float -> feeds 4-channel demux & GUI
     std::thread sink_thread([&]() {
         IqFrameHeader hdr;
         std::vector<int16_t> tx_sc16;
@@ -56,30 +55,27 @@ int main(int argc, char* argv[])
         std::vector<float> tx_fft;
         std::vector<float> rx_fft;
 
-        std::vector<std::complex<float>> tx_float;
-        std::vector<std::complex<float>> rx_float;
+        std::vector<std::complex<float>> tx_scaled;
+        std::vector<std::complex<float>> rx_scaled;
 
         bool prev_bursting = false;
 
         while (!stop_flag.load()) {
             if (!receiver.recv_frame(hdr, tx_sc16, rx_sc16, tx_fft, rx_fft)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
 
-            size_t count = hdr.sample_count;
-            tx_float.resize(count);
-            rx_float.resize(count);
+            // Decode scaled sc16 to float, route to 4 channels and route direct FFTs
+            demux.process_incoming_frame(hdr,
+                                         tx_sc16.data(),
+                                         rx_sc16.data(),
+                                         tx_fft.empty() ? nullptr : tx_fft.data(),
+                                         rx_fft.empty() ? nullptr : rx_fft.data(),
+                                         tx_scaled,
+                                         rx_scaled);
 
-            // 1. Convert sc16 from System 2 to complex float (fc32)
-            net_util::sc16_to_float(tx_sc16.data(), tx_float.data(), count);
-            net_util::sc16_to_float(rx_sc16.data(), rx_float.data(), count);
-
-            // 2. Write to local ring buffers for live GUI plotting on System 3
-            tx_ring.write(tx_float.data(), count);
-            rx_ring.write(rx_float.data(), count);
-
-            // 3. Update status metrics
+            // Update status metrics
             net_status.set_freq_hz(hdr.center_freq_hz);
             bool is_bursting = (hdr.is_bursting != 0);
             net_status.set_bursting(is_bursting);
@@ -91,9 +87,9 @@ int main(int argc, char* argv[])
         }
     });
 
-    // Launch identical live 2x2 GUI window on System 3
+    // Launch identical 8-plot GUI window on System 3
     {
-        Gui gui(net_status, tx_ring, rx_ring, kSampleRateHz, "USRP B210 Sink Monitor (System 3)");
+        MultichannelGui gui(net_status, demux, kSampleRateHz, "USRP B210 Sink Monitor (System 3 - 8 Plots)");
         gui.run();
     }
 

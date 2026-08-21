@@ -28,6 +28,7 @@ struct IqFrameHeader
     uint32_t sequence_num;    // Monotonically increasing (0, 1, 2, ...)
     uint64_t timestamp_ns;    // USRP timestamp in nanoseconds
     double   center_freq_hz;  // Active RF carrier frequency (e.g. 2.4e9, 5.1e9, 5.8e9)
+    float    iq_multiplier;   // 1.0 at S1 -> S2; 2.0 / 3.0 / 4.0 at S2 -> S3
     uint32_t sample_count;    // Number of complex samples per channel in this frame
     uint32_t fft_size;        // FFT points (e.g. 4096, or 0 if no FFT vector in this frame)
     uint32_t is_bursting;     // 1 during active TX burst, 0 during silence
@@ -110,6 +111,33 @@ inline void sc16_to_float(const int16_t* in_sc16, std::complex<float>* out, size
     for (size_t i = 0; i < count; ++i) {
         float re = static_cast<float>(in_sc16[2 * i])     * kInvScale;
         float im = static_cast<float>(in_sc16[2 * i + 1]) * kInvScale;
+        out[i] = std::complex<float>(re, im);
+    }
+}
+
+// Encodes scaled float to sc16 normalizing by multiplier M to preserve precision without clipping
+inline void float_to_sc16_scaled(const std::complex<float>* in, int16_t* out_sc16, size_t count, float multiplier)
+{
+    float inv_m = (multiplier > 0.0f) ? (1.0f / multiplier) : 1.0f;
+    for (size_t i = 0; i < count; ++i) {
+        float re = in[i].real() * inv_m;
+        float im = in[i].imag() * inv_m;
+
+        float re_clamped = std::max(-1.0f, std::min(1.0f, re));
+        float im_clamped = std::max(-1.0f, std::min(1.0f, im));
+
+        out_sc16[2 * i]     = static_cast<int16_t>(std::lround(re_clamped * 32767.0f));
+        out_sc16[2 * i + 1] = static_cast<int16_t>(std::lround(im_clamped * 32767.0f));
+    }
+}
+
+// Decodes sc16 back to scaled float using multiplier M
+inline void sc16_to_float_scaled(const int16_t* in_sc16, std::complex<float>* out, size_t count, float multiplier)
+{
+    float scale = (multiplier > 0.0f ? multiplier : 1.0f) / 32768.0f;
+    for (size_t i = 0; i < count; ++i) {
+        float re = static_cast<float>(in_sc16[2 * i])     * scale;
+        float im = static_cast<float>(in_sc16[2 * i + 1]) * scale;
         out[i] = std::complex<float>(re, im);
     }
 }

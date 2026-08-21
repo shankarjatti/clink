@@ -4,13 +4,23 @@
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
+
+namespace
+{
+static std::mutex g_fftw_planner_mutex;
+} // namespace
 
 FftProcessor::FftProcessor(size_t fft_size) : fft_size_(fft_size)
 {
     in_ = static_cast<fftwf_complex*>(fftwf_malloc(sizeof(fftwf_complex) * fft_size_));
     out_ = static_cast<fftwf_complex*>(fftwf_malloc(sizeof(fftwf_complex) * fft_size_));
-    plan_ = fftwf_plan_dft_1d(static_cast<int>(fft_size_), in_, out_, FFTW_FORWARD,
-                               FFTW_MEASURE);
+
+    {
+        std::lock_guard<std::mutex> lock(g_fftw_planner_mutex);
+        plan_ = fftwf_plan_dft_1d(static_cast<int>(fft_size_), in_, out_, FFTW_FORWARD,
+                                   FFTW_ESTIMATE);
+    }
 
     // Precompute a Hann window and its coherent-gain correction factor so
     // magnitude values reflect the input amplitude correctly rather than
@@ -28,7 +38,10 @@ FftProcessor::FftProcessor(size_t fft_size) : fft_size_(fft_size)
 
 FftProcessor::~FftProcessor()
 {
-    fftwf_destroy_plan(plan_);
+    {
+        std::lock_guard<std::mutex> lock(g_fftw_planner_mutex);
+        fftwf_destroy_plan(plan_);
+    }
     fftwf_free(in_);
     fftwf_free(out_);
 }

@@ -83,13 +83,13 @@ Assuming the following network IP addresses:
 #### Step 1: Start System 3 (Sink)
 ```bash
 cd clink/build
-./usrp_sink_gui --listen-port 6000
+./usrp_sink_gui --listen-port 6001
 ```
 
 #### Step 2: Start System 2 (Relay)
 ```bash
 cd clink/build
-./usrp_relay_gui --listen-port 5000 --stream-to 192.168.1.103:6000
+./usrp_relay_gui --listen-port 5000 --stream-to 192.168.1.103:6001
 ```
 
 #### Step 3: Start System 1 (SDR Source)
@@ -107,13 +107,13 @@ Open three separate terminal windows:
 #### Terminal 1 — Start System 3 (Sink)
 ```bash
 cd clink/build
-./usrp_sink_gui --listen-port 6000
+./usrp_sink_gui --listen-port 6001
 ```
 
 #### Terminal 2 — Start System 2 (Relay)
 ```bash
 cd clink/build
-./usrp_relay_gui --listen-port 5000 --stream-to 127.0.0.1:6000
+./usrp_relay_gui --listen-port 5000 --stream-to 127.0.0.1:6001
 ```
 
 #### Terminal 3 — Start System 1 (SDR Source)
@@ -136,25 +136,25 @@ cd clink/build
 | Option | Description | Default | Example |
 |---|---|---|---|
 | `--listen-port <port>` | Port to accept incoming stream from System 1 | `5000` | `--listen-port 5000` |
-| `--stream-to <ip:port>` | Target System 3 IP and listening port | `127.0.0.1:6000` | `--stream-to 192.168.1.103:6000` |
+| `--stream-to <ip:port>` | Target System 3 IP and listening port | `127.0.0.1:6001` | `--stream-to 192.168.1.103:6001` |
 
 ### `usrp_sink_gui` (System 3)
 | Option | Description | Default | Example |
 |---|---|---|---|
-| `--listen-port <port>` | Port to accept incoming stream from System 2 | `6000` | `--listen-port 6000` |
+| `--listen-port <port>` | Port to accept incoming stream from System 2 | `6001` | `--listen-port 6001` |
 
 ---
 
 ## 6. Firewall & Network Troubleshooting
 
 If systems are on different subnets or fail to connect:
-1. Ensure TCP ports `5000` and `6000` are open on the firewall:
+1. Ensure TCP ports `5000` and `6001` are open on the firewall:
    ```bash
    # On System 2:
    sudo ufw allow 5000/tcp
 
    # On System 3:
-   sudo ufw allow 6000/tcp
+   sudo ufw allow 6001/tcp
    ```
 2. Verify ping reachability:
    ```bash

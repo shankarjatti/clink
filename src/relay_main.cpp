@@ -1,10 +1,10 @@
 // relay_main.cpp
 //
 // System 2 Node (usrp_relay_gui):
-// 1. Receives sc16 IQ + FFT stream from System 1 over TCP with TCP_NODELAY
-// 2. Converts sc16 to complex float (fc32) and writes to local ring buffers
-// 3. Renders the exact same 2x2 live GUI plot in real time
-// 4. In parallel, converts float back to sc16 and forwards to System 3 over TCP
+// 1. Receives unscaled sc16 IQ + FFT stream from System 1 over TCP with TCP_NODELAY
+// 2. Demultiplexes into 4 channels (2.4G x2.0, 5.1G x3.0, 5.8G x4.0, Combined)
+// 3. Renders 8-plot (4 Waveforms + 4 FFTs) GUI in real time
+// 4. Encodes scaled float samples to sc16 and forwards to System 3 over TCP
 
 #include <atomic>
 #include <chrono>
@@ -14,16 +14,16 @@
 #include <thread>
 #include <vector>
 
-#include "gui.h"
+#include "multichannel_demux.h"
+#include "multichannel_gui.h"
 #include "net_protocol.h"
 #include "net_streamer.h"
-#include "ring_buffer.h"
 #include "status_provider.h"
 
 int main(int argc, char* argv[])
 {
     int listen_port = 5000;
-    std::string stream_target = "127.0.0.1:6000";
+    std::string stream_target = "127.0.0.1:6001";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -39,17 +39,16 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "=====================================================\n";
-    std::cout << "  USRP B210 Relay & Real-Time Monitor (System 2)      \n";
+    std::cout << "  USRP B210 Relay & 8-Plot Monitor (System 2)         \n";
     std::cout << "  Listening for System 1 on port: " << listen_port << "\n";
     if (!stream_target.empty()) {
-        std::cout << "  Forwarding stream to System 3 at: " << stream_target << "\n";
+        std::cout << "  Forwarding scaled sc16 stream to System 3 at: " << stream_target << "\n";
     }
     std::cout << "=====================================================\n";
 
     constexpr double kSampleRateHz = 2e6;
-    IqRingBuffer tx_ring(1 << 16);
-    IqRingBuffer rx_ring(1 << 16);
     NetStatusProvider net_status;
+    MultichannelDemux demux;
 
     IqTcpReceiver receiver(listen_port);
     receiver.start();
@@ -58,14 +57,14 @@ int main(int argc, char* argv[])
     if (!stream_target.empty()) {
         size_t colon = stream_target.find(':');
         std::string host = (colon != std::string::npos) ? stream_target.substr(0, colon) : "127.0.0.1";
-        int port = (colon != std::string::npos) ? std::stoi(stream_target.substr(colon + 1)) : 6000;
+        int port = (colon != std::string::npos) ? std::stoi(stream_target.substr(colon + 1)) : 6001;
         sender = std::make_shared<IqTcpSender>(host, port);
         sender->start();
     }
 
     std::atomic<bool> stop_flag{false};
 
-    // Worker thread: Receives sc16 from S1 -> converts to float -> feeds GUI -> converts float to sc16 -> sends to S3
+    // Worker thread: Receives sc16 from S1 -> converts & scales to float -> feeds 4-channel demux -> encodes to sc16 -> sends to S3
     std::thread relay_thread([&]() {
         IqFrameHeader hdr;
         std::vector<int16_t> tx_sc16;
@@ -73,30 +72,27 @@ int main(int argc, char* argv[])
         std::vector<float> tx_fft;
         std::vector<float> rx_fft;
 
-        std::vector<std::complex<float>> tx_float;
-        std::vector<std::complex<float>> rx_float;
+        std::vector<std::complex<float>> tx_scaled;
+        std::vector<std::complex<float>> rx_scaled;
 
         bool prev_bursting = false;
 
         while (!stop_flag.load()) {
             if (!receiver.recv_frame(hdr, tx_sc16, rx_sc16, tx_fft, rx_fft)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
 
-            size_t count = hdr.sample_count;
-            tx_float.resize(count);
-            rx_float.resize(count);
+            // Process, scale IQ (x2, x3, x4), route to 4 channels and route direct FFTs
+            float multiplier = demux.process_incoming_frame(hdr,
+                                                           tx_sc16.data(),
+                                                           rx_sc16.data(),
+                                                           tx_fft.empty() ? nullptr : tx_fft.data(),
+                                                           rx_fft.empty() ? nullptr : rx_fft.data(),
+                                                           tx_scaled,
+                                                           rx_scaled);
 
-            // 1. Convert sc16 from System 1 to complex float (fc32)
-            net_util::sc16_to_float(tx_sc16.data(), tx_float.data(), count);
-            net_util::sc16_to_float(rx_sc16.data(), rx_float.data(), count);
-
-            // 2. Write to local ring buffers for live GUI plotting on System 2
-            tx_ring.write(tx_float.data(), count);
-            rx_ring.write(rx_float.data(), count);
-
-            // 3. Update status metrics
+            // Update status metrics
             net_status.set_freq_hz(hdr.center_freq_hz);
             bool is_bursting = (hdr.is_bursting != 0);
             net_status.set_bursting(is_bursting);
@@ -106,20 +102,25 @@ int main(int argc, char* argv[])
             prev_bursting = is_bursting;
             net_status.set_rx_overflow(receiver.dropped_frames());
 
-            // 4. Convert float back to sc16 and forward to System 3 over TCP
+            // Forward scaled float samples encoded as sc16 + direct FFTs to System 3
             if (sender && sender->is_connected()) {
-                sender->send_frame(hdr.timestamp_ns, hdr.center_freq_hz, is_bursting,
-                                   tx_float.data(), rx_float.data(), count,
+                sender->send_frame(hdr.timestamp_ns,
+                                   hdr.center_freq_hz,
+                                   is_bursting,
+                                   tx_scaled.data(),
+                                   rx_scaled.data(),
+                                   hdr.sample_count,
                                    tx_fft.empty() ? nullptr : tx_fft.data(),
                                    rx_fft.empty() ? nullptr : rx_fft.data(),
-                                   hdr.fft_size);
+                                   hdr.fft_size,
+                                   multiplier);
             }
         }
     });
 
-    // Launch identical live 2x2 GUI window on System 2
+    // Launch 8-plot GUI window on System 2
     {
-        Gui gui(net_status, tx_ring, rx_ring, kSampleRateHz, "USRP B210 Relay Monitor (System 2)");
+        MultichannelGui gui(net_status, demux, kSampleRateHz, "USRP B210 Relay Monitor (System 2 - 8 Plots)");
         gui.run();
     }
 

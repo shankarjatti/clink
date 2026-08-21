@@ -1,6 +1,5 @@
-// burst_controller.cpp
-
 #include "burst_controller.h"
+#include "fft_processor.h"
 
 #include <algorithm>
 #include <iostream>
@@ -66,6 +65,16 @@ void BurstController::net_stream_loop()
     std::vector<std::complex<float>> tx_buf(spb_);
     std::vector<std::complex<float>> rx_buf(spb_);
 
+    constexpr size_t kFftLen = 4096;
+    FftProcessor tx_fft(kFftLen);
+    FftProcessor rx_fft(kFftLen);
+    std::vector<std::complex<float>> fft_scratch(kFftLen);
+    std::vector<float> tx_fft_db(kFftLen);
+    std::vector<float> rx_fft_db(kFftLen);
+    std::vector<float> dummy_freq(kFftLen);
+
+    uint64_t iter = 0;
+
     while (!stop_flag_.load()) {
         if (!net_sender_ || !net_sender_->is_connected()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -82,9 +91,29 @@ void BurstController::net_stream_loop()
             std::fill(rx_buf.begin() + n_rx, rx_buf.end(), std::complex<float>(0.0f, 0.0f));
         }
 
+        const float* tx_fft_ptr = nullptr;
+        const float* rx_fft_ptr = nullptr;
+        size_t send_fft_len = 0;
+
+        // Compute and attach FFT spectra every ~30ms (~33 Hz)
+        if (++iter % 30 == 0) {
+            size_t nft = tx_ring_.read_latest(fft_scratch.data(), kFftLen);
+            if (nft < kFftLen) std::fill(fft_scratch.begin() + nft, fft_scratch.end(), std::complex<float>(0.0f, 0.0f));
+            tx_fft.compute(fft_scratch.data(), tx_fft_db, usrp_.sample_rate(), dummy_freq);
+
+            size_t nfr = rx_ring_.read_latest(fft_scratch.data(), kFftLen);
+            if (nfr < kFftLen) std::fill(fft_scratch.begin() + nfr, fft_scratch.end(), std::complex<float>(0.0f, 0.0f));
+            rx_fft.compute(fft_scratch.data(), rx_fft_db, usrp_.sample_rate(), dummy_freq);
+
+            tx_fft_ptr = tx_fft_db.data();
+            rx_fft_ptr = rx_fft_db.data();
+            send_fft_len = kFftLen;
+        }
+
         uint64_t ts_ns = static_cast<uint64_t>(usrp_.now().get_real_secs() * 1e9);
         net_sender_->send_frame(ts_ns, current_freq_hz_.load(), is_bursting_.load(),
-                                tx_buf.data(), rx_buf.data(), spb_);
+                                tx_buf.data(), rx_buf.data(), spb_,
+                                tx_fft_ptr, rx_fft_ptr, send_fft_len, 1.0f);
 
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>((spb_ * 1e6) / usrp_.sample_rate())));
     }

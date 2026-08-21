@@ -14,15 +14,15 @@ This document tracks all critical system parameters, network protocol layouts, R
 | **Silence Duration** | `1.0 s` | Paced with zero-amplitude samples (`0.0f, 0.0f`) |
 | **IQ Format (Wire)** | `sc16` (signed 16-bit) | Interleaved `int16_t I`, `int16_t Q` (4 bytes/sample) |
 | **Throughput** | `8.0 MB/s` (64.0 Mbps) | Per channel ($16\text{ MB/s}$ combined dual-channel) |
-| **Waveform Amplitude Limit** | `[-2.0, 2.0]` | Fixed vertical plot scale |
 | **Default TX Gain** | `65.0 dB` (Constant) | Constant across 2.4 GHz, 5.1 GHz, 5.8 GHz |
 
-### Calibrated Band Table
-| Band Center | TX Gain | RX Gain | Calibrated RX Peak Amplitude |
-|---|---|---|---|
-| **2.4 GHz** | `65.0 dB` | `51.0 dB` | $\approx 1.0\text{ V}$ |
-| **5.1 GHz** | `65.0 dB` | `61.0 dB` | $\approx 1.0\text{ V}$ |
-| **5.8 GHz** | `65.0 dB` | `63.0 dB` | $\approx 1.0\text{ V}$ |
+### Calibrated Band Table & Channel Multipliers
+| Channel | Band Center | TX Gain | RX Gain | Base Peak Amp | Multiplier | Scaled Peak Amp |
+|---|---|---|---|---|---|---|
+| **Channel 1** | **2.4 GHz** | `65.0 dB` | `51.0 dB` | $\approx 1.0\text{ V}$ | **$\times 2.0$** | **$\approx \pm 2.0\text{ V}$** |
+| **Channel 2** | **5.1 GHz** | `65.0 dB` | `61.0 dB` | $\approx 1.0\text{ V}$ | **$\times 3.0$** | **$\approx \pm 3.0\text{ V}$** |
+| **Channel 3** | **5.8 GHz** | `65.0 dB` | `63.0 dB` | $\approx 1.0\text{ V}$ | **$\times 4.0$** | **$\approx \pm 4.0\text{ V}$** |
+| **Channel 4** | **Combined**| `65.0 dB` | Dynamic | $\approx 1.0\text{ V}$ | **Dynamic** | **$\pm 2.0 / \pm 3.0 / \pm 4.0\text{ V}$** |
 
 ---
 
@@ -36,6 +36,7 @@ struct IqFrameHeader {
     uint32_t sequence_num;    // Monotonically increasing counter (0, 1, 2, ...)
     uint64_t timestamp_ns;    // USRP / system hardware timestamp
     double   center_freq_hz;  // Active RF carrier frequency (2.4e9, 5.1e9, 5.8e9)
+    float    iq_multiplier;   // 1.0 at S1 -> S2; 2.0 / 3.0 / 4.0 at S2 -> S3
     uint32_t sample_count;    // Complex samples per channel (e.g. 2000)
     uint32_t fft_size;        // FFT points (e.g. 4096 or 0)
     uint32_t is_bursting;     // 1 during active burst, 0 during silence
@@ -53,73 +54,76 @@ struct IqFrameHeader {
 [ (Optional) RX FFT float data: fft_size * 4 bytes ]
 ```
 
-### Fast `sc16` ↔ `float` Conversion Rules
-- **Float to `sc16`**:
-  $$I_{16} = \text{clamp}(\text{round}(I_{\text{float}} \times 32767.0), -32768, 32767)$$
-  $$Q_{16} = \text{clamp}(\text{round}(Q_{\text{float}} \times 32767.0), -32768, 32767)$$
-- **`sc16` to Float**:
-  $$I_{\text{float}} = \frac{I_{16}}{32768.0}$$
-  $$Q_{\text{float}} = \frac{Q_{16}}{32768.0}$$
+---
+
+## 3. End-to-End Pipeline & Execution Flow
+
+```text
++-----------------------------------------------------------------------------------+
+| System 1 (Source)                                                                 |
+| Captures SDR float IQ -> Encodes to sc16 -> TCP_NODELAY stream to System 2        |
++-----------------------------------------------------------------------------------+
+                                         |  TCP Port 5000 (Unscaled sc16 + FFTs)
+                                         v
++-----------------------------------------------------------------------------------+
+| System 2 (Relay, Scaler & 8-Plot GUI)                                             |
+| 1. Receives sc16 -> Converts to float                                             |
+| 2. Multiplies IQ by band factor (2.4G x2, 5.1G x3, 5.8G x4)                       |
+| 3. Direct FFT routing (no multiplier, zero recomputation)                         |
+| 4. Renders live 8-Plot GUI (4 Scaled Waveforms + 4 Direct FFTs)                  |
+| 5. Encodes scaled float to sc16 -> TCP_NODELAY stream to System 3                 |
++-----------------------------------------------------------------------------------+
+                                         |  TCP Port 6001 (Scaled sc16 + FFTs)
+                                         v
++-----------------------------------------------------------------------------------+
+| System 3 (Sink & Identical 8-Plot GUI)                                            |
+| 1. Receives scaled sc16 stream from System 2                                      |
+| 2. Converts sc16 to scaled float                                                  |
+| 3. Direct FFT routing                                                             |
+| 4. Renders identical live 8-Plot GUI (4 Scaled Waveforms + 4 Direct FFTs)         |
++-----------------------------------------------------------------------------------+
+```
 
 ---
 
-## 3. TCP Low-Latency & Zero-Loss Configuration
+## 4. 8-Plot GUI Layout ($4 \times 2$ Grid)
 
-1. **`TCP_NODELAY` (Nagle's Algorithm Disabled)**:
-   - Eliminates packet coalescing latency, forcing chunks to transmit immediately upon `send()` ($< 0.5\text{ ms}$ latency).
-2. **Socket Buffer Expansion**:
-   - `SO_SNDBUF` and `SO_RCVBUF` set to **`4 MB`** to absorb OS thread scheduling jitter without drops.
-3. **Loss Verification**:
-   - Receiver monitors `hdr.sequence_num`. Any sequence gap increments `dropped_frames_` and is logged immediately.
+Both System 2 and System 3 display the identical 8-plot grid:
 
----
-
-## 4. Pipeline Topology & Executables
-
-### System 1: SDR Source Node (`usrp_burst_gui`)
-- **Role**: Drives USRP B210 hardware (TX on RF A, RX on RF B), renders local 2×2 GUI, packs samples into `sc16`, and streams over TCP.
-- **Run Command**:
-  ```bash
-  ./usrp_burst_gui --stream-to <SYSTEM_2_IP>:5000
-  ```
-
-### System 2: Relay Node (`usrp_relay_gui`)
-- **Role**:
-  1. Receives `sc16` stream from System 1 on Port `5000`.
-  2. Converts `sc16` $\to$ float complex (`fc32`).
-  3. Feeds local ring buffers and renders the identical live 2×2 GUI in real time.
-  4. In parallel, converts float $\to$ `sc16` and forwards the stream over TCP to System 3 on Port `6000`.
-- **Run Command**:
-  ```bash
-  ./usrp_relay_gui --listen-port 5000 --stream-to <SYSTEM_3_IP>:6000
-  ```
-
-### System 3: Sink Node (`usrp_sink_gui`)
-- **Role**:
-  1. Receives `sc16` stream from System 2 on Port `6000`.
-  2. Converts `sc16` $\to$ float complex (`fc32`).
-  3. Feeds local ring buffers and renders the identical live 2×2 GUI in real time with continuous sequence / zero-drop validation.
-- **Run Command**:
-  ```bash
-  ./usrp_sink_gui --listen-port 6000
-  ```
+```text
++---------------------------------------------------------------------------------------------+
+| Status Bar: Band: 2.4 GHz | [BURST ACTIVE] | Multipliers: Ch1(x2.0) Ch2(x3.0) Ch3(x4.0)     |
++---------------------------------------------+-----------------------------------------------+
+| Row 1: Channel 1 IQ (2.4 GHz - x2.0)        | Row 1: Channel 1 FFT (Direct 2.4 GHz)         |
+| [ Amplitude range: -4.0 to 4.0 ]            | [ Center: 2400.000 MHz, Peak +10 kHz ]        |
++---------------------------------------------+-----------------------------------------------+
+| Row 2: Channel 2 IQ (5.1 GHz - x3.0)        | Row 2: Channel 2 FFT (Direct 5.1 GHz)         |
+| [ Amplitude range: -6.0 to 6.0 ]            | [ Center: 5100.000 MHz, Peak +10 kHz ]        |
++---------------------------------------------+-----------------------------------------------+
+| Row 3: Channel 3 IQ (5.8 GHz - x4.0)        | Row 3: Channel 3 FFT (Direct 5.8 GHz)         |
+| [ Amplitude range: -8.0 to 8.0 ]            | [ Center: 5800.000 MHz, Peak +10 kHz ]        |
++---------------------------------------------+-----------------------------------------------+
+| Row 4: Channel 4 IQ (Combined Scaled)       | Row 4: Channel 4 FFT (Active Band Tracking)   |
+| [ Amplitude range: -8.0 to 8.0 ]            | [ Active Band Spectrum ]                      |
++---------------------------------------------+-----------------------------------------------+
+```
 
 ---
 
-## 5. Local Testing on a Single Machine
+## 5. Execution Instructions
 
-To test all 3 systems concurrently on loopback:
+### Local Multi-Node Test (Single Machine)
 
 ```bash
-# Terminal 1 (System 3):
+# Terminal 1 — Start System 3 (Sink):
 cd /home/sudeep/clink/build
-./usrp_sink_gui --listen-port 6000
+./usrp_sink_gui --listen-port 6001
 
-# Terminal 2 (System 2):
+# Terminal 2 — Start System 2 (Relay):
 cd /home/sudeep/clink/build
-./usrp_relay_gui --listen-port 5000 --stream-to 127.0.0.1:6000
+./usrp_relay_gui --listen-port 5000 --stream-to 127.0.0.1:6001
 
-# Terminal 3 (System 1):
+# Terminal 3 — Start System 1 (SDR Source):
 cd /home/sudeep/clink/build
 ./usrp_burst_gui --stream-to 127.0.0.1:5000
 ```

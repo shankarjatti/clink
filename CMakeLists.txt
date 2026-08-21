@@ -77,9 +77,11 @@ target_link_libraries(usrp_burst_gui PRIVATE
 
 target_compile_options(usrp_burst_gui PRIVATE -Wall -Wextra -O2)
 
-# System 2: Relay Node (sc16 -> float -> Live GUI -> float -> sc16 -> S3)
+# System 2: Relay Node (sc16 -> float -> Demux x2/x3/x4 -> 8-Plot GUI -> Scaled sc16 -> S3)
 add_executable(usrp_relay_gui
     src/relay_main.cpp
+    src/multichannel_demux.cpp
+    src/multichannel_gui.cpp
     src/fft_processor.cpp
     src/net_streamer.cpp
     src/gui.cpp
@@ -100,9 +102,11 @@ target_link_libraries(usrp_relay_gui PRIVATE
 
 target_compile_options(usrp_relay_gui PRIVATE -Wall -Wextra -O2)
 
-# System 3: Sink Node (sc16 -> float -> Live GUI & Packet Loss Verification)
+# System 3: Sink Node (Scaled sc16 -> float -> 4-Channel Demux -> 8-Plot GUI)
 add_executable(usrp_sink_gui
     src/sink_main.cpp
+    src/multichannel_demux.cpp
+    src/multichannel_gui.cpp
     src/fft_processor.cpp
     src/net_streamer.cpp
     src/gui.cpp
@@ -122,4 +126,5 @@ target_link_libraries(usrp_sink_gui PRIVATE
 )
 
 target_compile_options(usrp_sink_gui PRIVATE -Wall -Wextra -O2)
+
 
