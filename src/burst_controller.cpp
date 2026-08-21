@@ -125,7 +125,9 @@ void BurstController::net_stream_loop()
             azimuth_deg = 70.0f;
         }
 
-        uint64_t ts_ns = static_cast<uint64_t>(usrp_.now().get_real_secs() * 1e9);
+        uint64_t ts_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
         net_sender_->send_frame(ts_ns, freq, is_bursting_.load(),
                                 tx_buf.data(), rx_buf.data(), spb_,
                                 tx_fft_ptr, rx_fft_ptr, send_fft_len, 1.0f,

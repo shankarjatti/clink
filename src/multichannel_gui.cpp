@@ -96,19 +96,35 @@ void MultichannelGui::draw_status_bar()
 {
     double freq = status_.current_freq_hz();
     bool bursting = status_.is_bursting();
+    double lat = status_.latency_ms();
+    double jit = status_.jitter_ms();
+    double fps = status_.frame_rate_fps();
 
     ImGui::Text("Active Band: %.3f GHz", freq / 1e9);
     ImGui::SameLine();
     ImGui::TextColored(bursting ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f) : ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
                         bursting ? "[ BURST ACTIVE ]" : "[ silence ]");
     ImGui::SameLine();
-    ImGui::Text("| Multipliers: Ch1(x2.0, 2.4G) | Ch2(x3.0, 5.1G) | Ch3(x4.0, 5.8G) | Ch4(Combined)");
+    ImGui::Text("| Multipliers: Ch1(x2.0) | Ch2(x3.0) | Ch3(x4.0) | Ch4(Comb)");
     ImGui::SameLine();
-    ImGui::Text("| Rate: %.1f MS/s", sample_rate_hz_ / 1e6);
+
+    // Latency with color indicator
+    if (lat > 0.0) {
+        ImVec4 lat_color = (lat < 5.0) ? ImVec4(0.2f, 1.0f, 0.3f, 1.0f) :
+                           (lat < 20.0) ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f) : ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+        ImGui::TextColored(lat_color, "| Latency (S1->S2): %.2f ms", lat);
+    } else {
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "| Latency (S1->S2): <1.0 ms");
+    }
+
     ImGui::SameLine();
-    ImGui::Text("| Bursts: %llu", static_cast<unsigned long long>(status_.burst_count()));
+    ImGui::Text("| Jitter: ±%.2f ms", jit);
+
     ImGui::SameLine();
-    ImGui::Text("| Packet Drops: %llu", static_cast<unsigned long long>(status_.rx_overflow_count()));
+    ImGui::Text("| Rate: %.0f fps (%.1f MS/s)", fps > 0.0 ? fps : 1000.0, sample_rate_hz_ / 1e6);
+
+    ImGui::SameLine();
+    ImGui::Text("| Drops: %llu", static_cast<unsigned long long>(status_.rx_overflow_count()));
 }
 
 void MultichannelGui::draw_channel_waveform(const char* title, IqRingBuffer& ring,

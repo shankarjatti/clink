@@ -97,14 +97,19 @@ Renders all 4 channels simultaneously in a $4 \times 3$ grid:
 - **Column 2**: Direct RF FFT Spectra (`2400 MHz`, `5100 MHz`, `5800 MHz`)
 - **Column 3**: Polar Radar Maps (Range rings $30^\circ, 60^\circ, 90^\circ$, target bearing blip at $(El, Az)$)
 
-### System 3: Modern Operator Console (Split Top Waveform/FFT + Bottom Square Polar Map)
+### System 3: Modern Operator Console (Split Top Waveform/FFT + Bottom Square Polar Map & Latency Metrics)
 Features a dedicated sidebar with 2.4 GHz, 5.1 GHz, 5.8 GHz, and All Channels tabs. Each focused tab displays:
-1. **Top Section ($1 \times 2$ Grid)**:
+1. **Top Status Bar**:
+   - Live Carrier, Burst State, Multiplier Badge, **E2E Transit Latency (ms)**, **Inter-Frame Delivery Jitter (ms)**, **Ingestion Rate (FPS)**, Burst Counter, and Lossless Drop Counter.
+2. **Top Viewport ($1 \times 2$ Grid)**:
    - **Left**: Scaled IQ Waveform
    - **Right**: Direct RF FFT Spectrum
-2. **Bottom Section**:
+3. **Bottom Viewport**:
    - **Left Box**: Square Polar Radar Map (Target blip at $(El, Az)$ when active; drops to $0^\circ, 0^\circ$ idle when inactive)
-   - **Right Box**: Live Channel Telemetry & Diagnostics Card (Azimuth Bearing, Elevation, Multiplier, Peak Voltage, Peak Power, Tone Frequency)
+   - **Right Box**: 3-Column Live Channel Telemetry Card:
+     - *Column 1*: Active Status, Azimuth Bearing, Elevation Angle, Multiplier
+     - *Column 2*: Peak Voltage Amplitude, Peak Tone Power (dBFS), Tone Peak Frequency, Center Frequency
+     - *Column 3*: E2E Transit Latency, Inter-Frame Jitter, Ingestion Rate, Network Health
 
 ---
 

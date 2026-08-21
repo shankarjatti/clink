@@ -59,11 +59,52 @@ int main(int argc, char* argv[])
         std::vector<std::complex<float>> rx_scaled;
 
         bool prev_bursting = false;
+        double ema_latency_ms = 0.0;
+        double ema_jitter_ms = 0.0;
+        auto last_frame_time = std::chrono::steady_clock::now();
+        auto last_fps_calc_time = std::chrono::steady_clock::now();
+        uint64_t frame_counter = 0;
 
         while (!stop_flag.load()) {
             if (!receiver.recv_frame(hdr, tx_sc16, rx_sc16, tx_fft, rx_fft)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
+            }
+
+            auto now_steady = std::chrono::steady_clock::now();
+            uint64_t now_wall_ns = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count());
+
+            // Compute true End-to-End transit latency (System 1 -> System 2 -> System 3)
+            if (hdr.timestamp_ns > 0 && now_wall_ns >= hdr.timestamp_ns) {
+                double raw_latency_ms = static_cast<double>(now_wall_ns - hdr.timestamp_ns) / 1e6;
+                if (raw_latency_ms >= 0.0 && raw_latency_ms < 10000.0) {
+                    if (ema_latency_ms == 0.0) ema_latency_ms = raw_latency_ms;
+                    else ema_latency_ms = 0.95 * ema_latency_ms + 0.05 * raw_latency_ms;
+                    net_status.set_latency_ms(ema_latency_ms);
+                }
+            }
+
+            // Compute inter-frame arrival interval and delivery jitter (expected 1.0ms at 2MS/s with 2000 spb)
+            double delta_ms = std::chrono::duration<double, std::milli>(now_steady - last_frame_time).count();
+            last_frame_time = now_steady;
+            if (delta_ms > 0.0 && delta_ms < 50.0) {
+                double jitter = std::abs(delta_ms - 1.0);
+                if (ema_jitter_ms == 0.0) ema_jitter_ms = jitter;
+                else ema_jitter_ms = 0.95 * ema_jitter_ms + 0.05 * jitter;
+                net_status.set_jitter_ms(ema_jitter_ms);
+            }
+
+            // Compute ingestion frame rate (FPS)
+            ++frame_counter;
+            if (frame_counter % 100 == 0) {
+                double elapsed_s = std::chrono::duration<double>(now_steady - last_fps_calc_time).count();
+                if (elapsed_s > 0.0) {
+                    double fps = 100.0 / elapsed_s;
+                    net_status.set_frame_rate_fps(fps);
+                }
+                last_fps_calc_time = now_steady;
             }
 
             // Decode scaled sc16 to float, route to 4 channels and route direct FFTs

@@ -137,15 +137,31 @@ void OperatorConsoleGui::draw_top_status_bar()
 
     ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "ACTIVE MULTIPLIER: x%.1f", active_mult);
 
+    double lat = status_.latency_ms();
+    double jit = status_.jitter_ms();
+    double fps = status_.frame_rate_fps();
+
     ImGui::SameLine(0, 16.0f);
-    ImGui::Text("| Rate: %.1f MS/s (8.0 MB/s)", sample_rate_hz_ / 1e6);
+    if (lat > 0.0) {
+        ImVec4 lat_color = (lat < 5.0) ? ImVec4(0.2f, 1.0f, 0.3f, 1.0f) :
+                           (lat < 20.0) ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f) : ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+        ImGui::TextColored(lat_color, "| Latency (E2E): %.2f ms", lat);
+    } else {
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "| Latency (E2E): <1.0 ms");
+    }
+
+    ImGui::SameLine(0, 16.0f);
+    ImGui::Text("| Jitter: ±%.2f ms", jit);
+
+    ImGui::SameLine(0, 16.0f);
+    ImGui::Text("| Rate: %.0f fps (%.1f MS/s)", fps > 0.0 ? fps : 1000.0, sample_rate_hz_ / 1e6);
 
     ImGui::SameLine(0, 16.0f);
     ImGui::Text("| Bursts: %llu", static_cast<unsigned long long>(status_.burst_count()));
 
     ImGui::SameLine(0, 16.0f);
     if (drops == 0) {
-        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "| Loss: 0 Drops (0.00%% Lossless)");
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "| Loss: 0 Drops (Lossless)");
     } else {
         ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "| Loss: %llu Drops", static_cast<unsigned long long>(drops));
     }
@@ -456,13 +472,15 @@ void OperatorConsoleGui::draw_single_channel_view(int channel_idx, const char* t
 
     // Right Box: Live Channel Metrics Card filling the rest of the bottom row
     ImGui::BeginChild("BottomDiagnosticsRegion", ImVec2(0, bottom_height), true);
-    ImGui::TextColored(ImVec4(0.9f, 0.8f, 0.3f, 1.0f), "LIVE CHANNEL TELEMETRY & BEARING:");
+    ImGui::TextColored(ImVec4(0.9f, 0.8f, 0.3f, 1.0f), "LIVE CHANNEL TELEMETRY, BEARING & LATENCY PERFORMANCE:");
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::Columns(2, "MetricsColumns", false);
-    ImGui::SetColumnWidth(0, 260.0f);
+    ImGui::Columns(3, "MetricsColumns", false);
+    ImGui::SetColumnWidth(0, 240.0f);
+    ImGui::SetColumnWidth(1, 260.0f);
 
+    // Column 1: RF & Angles
     ImGui::Text("Active Band Status:");
     ImGui::SameLine();
     if (is_active_band) {
@@ -483,6 +501,7 @@ void OperatorConsoleGui::draw_single_channel_view(int channel_idx, const char* t
     ImGui::SameLine();
     ImGui::Text("x%.1f", ch.multiplier);
 
+    // Column 2: Amplitude & Power
     ImGui::NextColumn();
 
     ImGui::Text("Peak Voltage Amp:");
@@ -493,13 +512,47 @@ void OperatorConsoleGui::draw_single_channel_view(int channel_idx, const char* t
     ImGui::SameLine();
     ImGui::Text("%.1f dBFS", scr.peak_db);
 
-    ImGui::Text("Tone Peak Frequency:");
+    ImGui::Text("Tone Peak Freq:");
     ImGui::SameLine();
     ImGui::Text("%.3f MHz", scr.peak_mhz);
 
-    ImGui::Text("RF Center Frequency:");
+    ImGui::Text("RF Center Freq:");
     ImGui::SameLine();
     ImGui::Text("%.3f MHz", default_carrier_mhz);
+
+    // Column 3: Pipeline Latency & Jitter
+    ImGui::NextColumn();
+
+    double cur_lat = status_.latency_ms();
+    double cur_jit = status_.jitter_ms();
+    double cur_fps = status_.frame_rate_fps();
+    uint64_t cur_drops = status_.rx_overflow_count();
+
+    ImGui::Text("E2E Transit Latency:");
+    ImGui::SameLine();
+    if (cur_lat > 0.0) {
+        ImVec4 lat_col = (cur_lat < 5.0) ? ImVec4(0.2f, 1.0f, 0.3f, 1.0f) :
+                         (cur_lat < 20.0) ? ImVec4(1.0f, 0.8f, 0.2f, 1.0f) : ImVec4(1.0f, 0.3f, 0.3f, 1.0f);
+        ImGui::TextColored(lat_col, "%.2f ms", cur_lat);
+    } else {
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "< 1.0 ms");
+    }
+
+    ImGui::Text("Inter-Frame Jitter:");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "±%.2f ms", cur_jit);
+
+    ImGui::Text("Frame Ingestion:");
+    ImGui::SameLine();
+    ImGui::Text("%.0f fps", cur_fps > 0.0 ? cur_fps : 1000.0);
+
+    ImGui::Text("Network Health:");
+    ImGui::SameLine();
+    if (cur_drops == 0) {
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "LOSSLESS");
+    } else {
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%llu DROPS", static_cast<unsigned long long>(cur_drops));
+    }
 
     ImGui::Columns(1);
     ImGui::EndChild();

@@ -18,6 +18,9 @@ struct IMonitorStatus
     virtual uint64_t tx_underflow_count() const = 0;
     virtual uint64_t tx_late_count() const = 0;
     virtual uint64_t rx_overflow_count() const = 0;
+    virtual double latency_ms() const { return 0.0; }
+    virtual double jitter_ms() const { return 0.0; }
+    virtual double frame_rate_fps() const { return 0.0; }
 };
 
 class NetStatusProvider : public IMonitorStatus
@@ -30,6 +33,9 @@ public:
     uint64_t tx_underflow_count() const override { return tx_underflow_count_.load(); }
     uint64_t tx_late_count() const override { return tx_late_count_.load(); }
     uint64_t rx_overflow_count() const override { return rx_overflow_count_.load(); }
+    double latency_ms() const override { return latency_ms_.load(); }
+    double jitter_ms() const override { return jitter_ms_.load(); }
+    double frame_rate_fps() const override { return frame_rate_fps_.load(); }
 
     void set_freq_hz(double freq) { current_freq_hz_.store(freq); }
     void set_bursting(bool b) { is_bursting_.store(b); }
@@ -38,6 +44,9 @@ public:
     void set_tx_underflow(uint64_t c) { tx_underflow_count_.store(c); }
     void set_tx_late(uint64_t c) { tx_late_count_.store(c); }
     void set_rx_overflow(uint64_t c) { rx_overflow_count_.store(c); }
+    void set_latency_ms(double l) { latency_ms_.store(l); }
+    void set_jitter_ms(double j) { jitter_ms_.store(j); }
+    void set_frame_rate_fps(double fps) { frame_rate_fps_.store(fps); }
 
 private:
     std::atomic<double> current_freq_hz_{2.4e9};
@@ -47,4 +56,7 @@ private:
     std::atomic<uint64_t> tx_underflow_count_{0};
     std::atomic<uint64_t> tx_late_count_{0};
     std::atomic<uint64_t> rx_overflow_count_{0};
+    std::atomic<double> latency_ms_{0.0};
+    std::atomic<double> jitter_ms_{0.0};
+    std::atomic<double> frame_rate_fps_{0.0};
 };
