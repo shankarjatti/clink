@@ -76,36 +76,42 @@ struct IqFrameHeader {
                                          |  TCP Port 6001 (Scaled sc16 + FFTs)
                                          v
 +-----------------------------------------------------------------------------------+
-| System 3 (Sink & Identical 8-Plot GUI)                                            |
+| System 3 (Sink & Operator Console GUI)                                            |
 | 1. Receives scaled sc16 stream from System 2                                      |
 | 2. Converts sc16 to scaled float                                                  |
 | 3. Direct FFT routing                                                             |
-| 4. Renders identical live 8-Plot GUI (4 Scaled Waveforms + 4 Direct FFTs)         |
+| 4. Renders Operator Console with Left Sidebar Tabs (2.4G, 5.1G, 5.8G, All)        |
 +-----------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 4. 8-Plot GUI Layout ($4 \times 2$ Grid)
+## 4. User Interface Architecture
 
-Both System 2 and System 3 display the identical 8-plot grid:
+### System 2: 8-Plot Matrix Grid ($4 \times 2$)
+Renders all 4 channels (Waveform + FFT) simultaneously in a compact multi-row layout for continuous relay monitoring.
+
+### System 3: Modern Operator Console (Sidebar Navigation & Focused Views)
+Features an operator-focused layout with a left navigation sidebar, top telemetry bar, and expanded high-resolution plot views:
 
 ```text
-+---------------------------------------------------------------------------------------------+
-| Status Bar: Band: 2.4 GHz | [BURST ACTIVE] | Multipliers: Ch1(x2.0) Ch2(x3.0) Ch3(x4.0)     |
-+---------------------------------------------+-----------------------------------------------+
-| Row 1: Channel 1 IQ (2.4 GHz - x2.0)        | Row 1: Channel 1 FFT (Direct 2.4 GHz)         |
-| [ Amplitude range: -4.0 to 4.0 ]            | [ Center: 2400.000 MHz, Peak +10 kHz ]        |
-+---------------------------------------------+-----------------------------------------------+
-| Row 2: Channel 2 IQ (5.1 GHz - x3.0)        | Row 2: Channel 2 FFT (Direct 5.1 GHz)         |
-| [ Amplitude range: -6.0 to 6.0 ]            | [ Center: 5100.000 MHz, Peak +10 kHz ]        |
-+---------------------------------------------+-----------------------------------------------+
-| Row 3: Channel 3 IQ (5.8 GHz - x4.0)        | Row 3: Channel 3 FFT (Direct 5.8 GHz)         |
-| [ Amplitude range: -8.0 to 8.0 ]            | [ Center: 5800.000 MHz, Peak +10 kHz ]        |
-+---------------------------------------------+-----------------------------------------------+
-| Row 4: Channel 4 IQ (Combined Scaled)       | Row 4: Channel 4 FFT (Active Band Tracking)   |
-| [ Amplitude range: -8.0 to 8.0 ]            | [ Active Band Spectrum ]                      |
-+---------------------------------------------+-----------------------------------------------+
++-----------------------------------------------------------------------------------------------------------------------+
+|  TOP STATUS BAR: Carrier: 2.400 GHz | [ BURST ACTIVE ] | Multiplier: x2.0 | Rate: 2.0 MS/s | Bursts: 42 | Loss: 0     |
++-----------------------+-----------------------------------------------------------------------------------------------+
+|  OPERATOR CHANNELS    |                                                                                               |
+|                       |  [ CHANNEL 1: 2.4 GHz BAND (Multiplier: x2.0) ]                                               |
+|  [>] 2.4 GHz (x2.0)   |                                                                                               |
+|      Status: Active   |  +---------------------------------------+  +-----------------------------------------------+ |
+|                       |  |  IQ Waveform (Scaled x2.0)            |  |  FFT Spectrum (2400.000 MHz)                  | |
+|  [ ] 5.1 GHz (x3.0)   |  |  - High-resolution I & Q Waveform     |  |  - Direct Received FFT Spectrum               | |
+|      Status: Standby  |  |  - Amplitude Range: [-4.0V, 4.0V]     |  |  - Peak Tone at 2400.010 MHz                  | |
+|                       |  +---------------------------------------+  +-----------------------------------------------+ |
+|  [ ] 5.8 GHz (x4.0)   |                                                                                               |
+|      Status: Standby  |  -- Live Channel Metrics -------------------------------------------------------------------  |
+|                       |  Peak Voltage: 1.98 V | Multiplier: 2.0x | Peak Power: -42.1 dB | RF Center: 2400.000 MHz     |
+|  [ ] All Channels     |                                                                                               |
+|      Composite Stream |                                                                                               |
++-----------------------+-----------------------------------------------------------------------------------------------+
 ```
 
 ---

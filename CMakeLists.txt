@@ -102,9 +102,10 @@ target_link_libraries(usrp_relay_gui PRIVATE
 
 target_compile_options(usrp_relay_gui PRIVATE -Wall -Wextra -O2)
 
-# System 3: Sink Node (Scaled sc16 -> float -> 4-Channel Demux -> 8-Plot GUI)
+# System 3: Sink Node (Operator Console GUI with Sidebar Tabs & Focused Views)
 add_executable(usrp_sink_gui
     src/sink_main.cpp
+    src/operator_console_gui.cpp
     src/multichannel_demux.cpp
     src/multichannel_gui.cpp
     src/fft_processor.cpp

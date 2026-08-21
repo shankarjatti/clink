@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "multichannel_demux.h"
-#include "multichannel_gui.h"
+#include "operator_console_gui.h"
 #include "net_protocol.h"
 #include "net_streamer.h"
 #include "status_provider.h"
@@ -87,10 +87,10 @@ int main(int argc, char* argv[])
         }
     });
 
-    // Launch identical 8-plot GUI window on System 3
+    // Launch Operator Console GUI window on System 3
     {
-        MultichannelGui gui(net_status, demux, kSampleRateHz, "USRP B210 Sink Monitor (System 3 - 8 Plots)");
-        gui.run();
+        OperatorConsoleGui console(net_status, demux, kSampleRateHz, "USRP B210 Operator Console (System 3)");
+        console.run();
     }
 
     std::cout << "[System 3] Shutting down...\n";
