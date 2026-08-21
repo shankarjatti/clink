@@ -319,7 +319,7 @@ void OperatorConsoleGui::render_fft_plot(const char* plot_id, ChannelData& ch_da
     }
 }
 
-void OperatorConsoleGui::render_polar_map_plot(const char* plot_id, float elevation_deg, float azimuth_deg)
+void OperatorConsoleGui::render_polar_map_plot(const char* plot_id, float elevation_deg, float azimuth_deg, bool is_active)
 {
     if (ImPlot::BeginPlot(plot_id, ImVec2(-1, -1), ImPlotFlags_Equal)) {
         ImPlot::SetupAxes("X (East)", "Y (North)", ImPlotAxisFlags_NoGridLines, ImPlotAxisFlags_NoGridLines);
@@ -361,25 +361,33 @@ void OperatorConsoleGui::render_polar_map_plot(const char* plot_id, float elevat
         ImPlot::SetNextLineStyle(ImVec4(0.3f, 0.4f, 0.5f, 0.3f), 1.0f);
         ImPlot::PlotLine("##AxisEW", axis_ew_x, axis_ew_y, 2);
 
-        // Convert (Elevation, Azimuth) to Cartesian coordinates (Azimuth clockwise from North / Y-axis)
-        float rad = azimuth_deg * static_cast<float>(M_PI / 180.0);
-        float target_r = elevation_deg;
-        float target_x = target_r * std::sin(rad);
-        float target_y = target_r * std::cos(rad);
+        if (is_active && elevation_deg > 0.0f) {
+            // Convert (Elevation, Azimuth) to Cartesian coordinates (Azimuth clockwise from North / Y-axis)
+            float rad = azimuth_deg * static_cast<float>(M_PI / 180.0);
+            float target_r = elevation_deg;
+            float target_x = target_r * std::sin(rad);
+            float target_y = target_r * std::cos(rad);
 
-        // Bearing vector line
-        float line_x[2] = {0.0f, target_x};
-        float line_y[2] = {0.0f, target_y};
-        ImPlot::SetNextLineStyle(ImVec4(0.2f, 1.0f, 0.4f, 0.8f), 2.0f);
-        ImPlot::PlotLine("Bearing", line_x, line_y, 2);
+            // Bearing vector line
+            float line_x[2] = {0.0f, target_x};
+            float line_y[2] = {0.0f, target_y};
+            ImPlot::SetNextLineStyle(ImVec4(0.2f, 1.0f, 0.4f, 0.9f), 2.0f);
+            ImPlot::PlotLine("Bearing", line_x, line_y, 2);
 
-        // Target marker
-        float pt_x[1] = {target_x};
-        float pt_y[1] = {target_y};
-        ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 8.0f, ImVec4(1.0f, 0.3f, 0.2f, 1.0f), 2.0f, ImVec4(1.0f, 0.9f, 0.2f, 1.0f));
-        char pt_label[64];
-        std::snprintf(pt_label, sizeof(pt_label), "Target (El: %.0f°, Az: %.0f°)", elevation_deg, azimuth_deg);
-        ImPlot::PlotScatter(pt_label, pt_x, pt_y, 1);
+            // Target marker
+            float pt_x[1] = {target_x};
+            float pt_y[1] = {target_y};
+            ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 8.0f, ImVec4(1.0f, 0.3f, 0.2f, 1.0f), 2.0f, ImVec4(1.0f, 0.9f, 0.2f, 1.0f));
+            char pt_label[64];
+            std::snprintf(pt_label, sizeof(pt_label), "Target (El: %.0f°, Az: %.0f°)", elevation_deg, azimuth_deg);
+            ImPlot::PlotScatter(pt_label, pt_x, pt_y, 1);
+        } else {
+            // Idle state: marker sits at origin (0, 0)
+            float pt_x[1] = {0.0f};
+            float pt_y[1] = {0.0f};
+            ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 5.0f, ImVec4(0.5f, 0.5f, 0.6f, 0.6f), 1.0f, ImVec4(0.3f, 0.3f, 0.4f, 0.8f));
+            ImPlot::PlotScatter("Idle (0°, 0°)", pt_x, pt_y, 1);
+        }
 
         ImPlot::EndPlot();
     }
@@ -391,19 +399,39 @@ void OperatorConsoleGui::draw_single_channel_view(int channel_idx, const char* t
     ChannelData& ch = demux_.channel(channel_idx);
     ChannelScratch& scr = ch_scratch_[channel_idx];
 
+    double current_freq = status_.current_freq_hz();
+    bool is_bursting = status_.is_bursting();
+    bool is_active_band = false;
+
+    if (channel_idx == 3) {
+        is_active_band = is_bursting;
+    } else {
+        is_active_band = (std::abs(current_freq - default_carrier_mhz * 1e6) < 200e6) && is_bursting;
+    }
+
+    float display_el = is_active_band ? ch.elevation_deg : 0.0f;
+    float display_az = is_active_band ? ch.azimuth_deg : 0.0f;
+
     // Section header
     ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "%s", title_desc);
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "| Multiplier: x%.1f | Range: [%.1fV, %.1fV] | Az: %.0f° | El: %.0f°",
-                       ch.multiplier, y_min, y_max, ch.azimuth_deg, ch.elevation_deg);
+    if (is_active_band) {
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "[ LIVE TRANSMISSION ]");
+    } else {
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "[ STANDBY / 0° ]");
+    }
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "| Multiplier: x%.1f | Range: [%.1fV, %.1fV]",
+                       ch.multiplier, y_min, y_max);
     ImGui::Spacing();
 
-    // Compute layout: leave 70px at bottom for diagnostics card
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    float plots_height = std::max(200.0f, avail.y - 70.0f);
+    // Top part: Split into 1x2 for Waveform & FFT (takes upper majority)
+    float bottom_height = 200.0f;
+    float top_plots_height = std::max(180.0f, avail.y - bottom_height - 12.0f);
 
-    // 1x3 Subplots Grid: Left = Scaled Waveform, Center = Direct RF FFT, Right = Polar Radar Map
-    if (ImPlot::BeginSubplots("##FocusedChannelPlots", 1, 3, ImVec2(avail.x, plots_height))) {
+    // 1. TOP PART: 1x2 Subplots Grid (Left = Scaled Waveform, Right = Direct RF FFT)
+    if (ImPlot::BeginSubplots("##TopWaveAndFftPlots", 1, 2, ImVec2(avail.x, top_plots_height))) {
         render_waveform_plot("Scaled IQ Waveform", ch.rx_ring,
                              scr.wave_scratch, scr.i_buf, scr.q_buf,
                              y_min, y_max, scr.peak_v);
@@ -413,26 +441,67 @@ void OperatorConsoleGui::draw_single_channel_view(int channel_idx, const char* t
                         default_carrier_mhz, scr.last_carrier_mhz,
                         scr.peak_db, scr.peak_mhz);
 
-        render_polar_map_plot("Polar Radar Map", ch.elevation_deg, ch.azimuth_deg);
-
         ImPlot::EndSubplots();
     }
 
     ImGui::Spacing();
 
-    // Diagnostics telemetry card
-    ImGui::BeginChild("DiagnosticsCard", ImVec2(0, 0), true);
-    ImGui::TextColored(ImVec4(0.9f, 0.8f, 0.3f, 1.0f), "LIVE CHANNEL METRICS:");
-    ImGui::SameLine(0, 16.0f);
-    ImGui::Text("Peak Voltage: %.2f V", scr.peak_v);
-    ImGui::SameLine(0, 18.0f);
-    ImGui::Text("Peak Tone Power: %.1f dB", scr.peak_db);
-    ImGui::SameLine(0, 18.0f);
-    ImGui::Text("Tone Peak Freq: %.3f MHz", scr.peak_mhz);
-    ImGui::SameLine(0, 18.0f);
-    ImGui::Text("Bearing: Azimuth %.0f°, Elevation %.0f°", ch.azimuth_deg, ch.elevation_deg);
-    ImGui::SameLine(0, 18.0f);
-    ImGui::Text("RF Center: %.3f MHz", default_carrier_mhz);
+    // 2. BOTTOM PART: Left = Square Polar Radar Map, Right = Live Telemetry Metrics Card
+    // Left Box: Square Polar Map (width = bottom_height, height = bottom_height)
+    ImGui::BeginChild("BottomPolarMapRegion", ImVec2(bottom_height, bottom_height), true);
+    render_polar_map_plot("##BottomPolarPlot", display_el, display_az, is_active_band);
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+
+    // Right Box: Live Channel Metrics Card filling the rest of the bottom row
+    ImGui::BeginChild("BottomDiagnosticsRegion", ImVec2(0, bottom_height), true);
+    ImGui::TextColored(ImVec4(0.9f, 0.8f, 0.3f, 1.0f), "LIVE CHANNEL TELEMETRY & BEARING:");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::Columns(2, "MetricsColumns", false);
+    ImGui::SetColumnWidth(0, 260.0f);
+
+    ImGui::Text("Active Band Status:");
+    ImGui::SameLine();
+    if (is_active_band) {
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.3f, 1.0f), "ACTIVE");
+    } else {
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "IDLE (0°)");
+    }
+
+    ImGui::Text("Azimuth Bearing:");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "%.1f°", display_az);
+
+    ImGui::Text("Elevation Angle:");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "%.1f°", display_el);
+
+    ImGui::Text("Active Multiplier:");
+    ImGui::SameLine();
+    ImGui::Text("x%.1f", ch.multiplier);
+
+    ImGui::NextColumn();
+
+    ImGui::Text("Peak Voltage Amp:");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%.2f V", scr.peak_v);
+
+    ImGui::Text("Peak Tone Power:");
+    ImGui::SameLine();
+    ImGui::Text("%.1f dBFS", scr.peak_db);
+
+    ImGui::Text("Tone Peak Frequency:");
+    ImGui::SameLine();
+    ImGui::Text("%.3f MHz", scr.peak_mhz);
+
+    ImGui::Text("RF Center Frequency:");
+    ImGui::SameLine();
+    ImGui::Text("%.3f MHz", default_carrier_mhz);
+
+    ImGui::Columns(1);
     ImGui::EndChild();
 }
 
@@ -443,14 +512,22 @@ void OperatorConsoleGui::draw_all_channels_view()
     ImGui::Checkbox("4x3 Matrix Overview", &show_all_grid_);
     ImGui::Spacing();
 
+    double current_freq = status_.current_freq_hz();
+    bool is_bursting = status_.is_bursting();
+
     if (!show_all_grid_) {
-        // Continuous composite stream view (1x3: Waveform, FFT, Dynamic Polar Map)
-        double active_carrier_mhz = status_.current_freq_hz() / 1e6;
+        // Continuous composite stream view (Split Top Waveform/FFT, Bottom Square Polar Map)
+        double active_carrier_mhz = current_freq / 1e6;
         draw_single_channel_view(3, "CHANNEL 4: COMBINED DYNAMIC STREAM", -8.0, 8.0, active_carrier_mhz);
     } else {
         // 4x3 matrix overview of all 4 channels (12 plots)
         ImVec2 avail = ImGui::GetContentRegionAvail();
         if (ImPlot::BeginSubplots("##AllMatrixPlots", 4, 3, avail)) {
+            bool ch1_active = (std::abs(current_freq - 2.4e9) < 200e6) && is_bursting;
+            bool ch2_active = (std::abs(current_freq - 5.1e9) < 200e6) && is_bursting;
+            bool ch3_active = (std::abs(current_freq - 5.8e9) < 200e6) && is_bursting;
+            bool ch4_active = is_bursting;
+
             // Row 1: Ch 1 (2.4G x2.0)
             render_waveform_plot("Ch 1 (2.4 GHz - x2.0)", demux_.ch1().rx_ring,
                                  ch_scratch_[0].wave_scratch, ch_scratch_[0].i_buf, ch_scratch_[0].q_buf,
@@ -459,7 +536,10 @@ void OperatorConsoleGui::draw_all_channels_view()
                             ch_scratch_[0].fft_db, ch_scratch_[0].fft_freq,
                             2400.0, ch_scratch_[0].last_carrier_mhz,
                             ch_scratch_[0].peak_db, ch_scratch_[0].peak_mhz);
-            render_polar_map_plot("Ch 1 Polar Map (2.4G)", demux_.ch1().elevation_deg, demux_.ch1().azimuth_deg);
+            render_polar_map_plot("Ch 1 Polar Map (2.4G)",
+                                  ch1_active ? demux_.ch1().elevation_deg : 0.0f,
+                                  ch1_active ? demux_.ch1().azimuth_deg : 0.0f,
+                                  ch1_active);
 
             // Row 2: Ch 2 (5.1G x3.0)
             render_waveform_plot("Ch 2 (5.1 GHz - x3.0)", demux_.ch2().rx_ring,
@@ -469,7 +549,10 @@ void OperatorConsoleGui::draw_all_channels_view()
                             ch_scratch_[1].fft_db, ch_scratch_[1].fft_freq,
                             5100.0, ch_scratch_[1].last_carrier_mhz,
                             ch_scratch_[1].peak_db, ch_scratch_[1].peak_mhz);
-            render_polar_map_plot("Ch 2 Polar Map (5.1G)", demux_.ch2().elevation_deg, demux_.ch2().azimuth_deg);
+            render_polar_map_plot("Ch 2 Polar Map (5.1G)",
+                                  ch2_active ? demux_.ch2().elevation_deg : 0.0f,
+                                  ch2_active ? demux_.ch2().azimuth_deg : 0.0f,
+                                  ch2_active);
 
             // Row 3: Ch 3 (5.8G x4.0)
             render_waveform_plot("Ch 3 (5.8 GHz - x4.0)", demux_.ch3().rx_ring,
@@ -479,10 +562,13 @@ void OperatorConsoleGui::draw_all_channels_view()
                             ch_scratch_[2].fft_db, ch_scratch_[2].fft_freq,
                             5800.0, ch_scratch_[2].last_carrier_mhz,
                             ch_scratch_[2].peak_db, ch_scratch_[2].peak_mhz);
-            render_polar_map_plot("Ch 3 Polar Map (5.8G)", demux_.ch3().elevation_deg, demux_.ch3().azimuth_deg);
+            render_polar_map_plot("Ch 3 Polar Map (5.8G)",
+                                  ch3_active ? demux_.ch3().elevation_deg : 0.0f,
+                                  ch3_active ? demux_.ch3().azimuth_deg : 0.0f,
+                                  ch3_active);
 
             // Row 4: Ch 4 (Combined)
-            double active_carrier_mhz = status_.current_freq_hz() / 1e6;
+            double active_carrier_mhz = current_freq / 1e6;
             render_waveform_plot("Ch 4 (Combined Scaled)", demux_.ch4().rx_ring,
                                  ch_scratch_[3].wave_scratch, ch_scratch_[3].i_buf, ch_scratch_[3].q_buf,
                                  -8.0, 8.0, ch_scratch_[3].peak_v);
@@ -490,7 +576,10 @@ void OperatorConsoleGui::draw_all_channels_view()
                             ch_scratch_[3].fft_db, ch_scratch_[3].fft_freq,
                             active_carrier_mhz, ch_scratch_[3].last_carrier_mhz,
                             ch_scratch_[3].peak_db, ch_scratch_[3].peak_mhz);
-            render_polar_map_plot("Ch 4 Polar Map (Active)", demux_.ch4().elevation_deg, demux_.ch4().azimuth_deg);
+            render_polar_map_plot("Ch 4 Polar Map (Active)",
+                                  ch4_active ? demux_.ch4().elevation_deg : 0.0f,
+                                  ch4_active ? demux_.ch4().azimuth_deg : 0.0f,
+                                  ch4_active);
 
             ImPlot::EndSubplots();
         }

@@ -97,12 +97,14 @@ Renders all 4 channels simultaneously in a $4 \times 3$ grid:
 - **Column 2**: Direct RF FFT Spectra (`2400 MHz`, `5100 MHz`, `5800 MHz`)
 - **Column 3**: Polar Radar Maps (Range rings $30^\circ, 60^\circ, 90^\circ$, target bearing blip at $(El, Az)$)
 
-### System 3: Modern Operator Console ($1 \times 3$ Focused Layout)
-Features a dedicated sidebar with 2.4 GHz, 5.1 GHz, 5.8 GHz, and All Channels tabs. Each focused tab displays a high-resolution $1 \times 3$ layout:
-1. **Scaled IQ Waveform** (Left)
-2. **Direct RF Spectrum** (Center)
-3. **Polar Radar Map** (Right, showing Target Bearing at fixed $(El, Az)$)
-4. **Live Channel Diagnostics Card** (Peak Voltage, Peak Tone Power, Tone Frequency, Bearing Angles)
+### System 3: Modern Operator Console (Split Top Waveform/FFT + Bottom Square Polar Map)
+Features a dedicated sidebar with 2.4 GHz, 5.1 GHz, 5.8 GHz, and All Channels tabs. Each focused tab displays:
+1. **Top Section ($1 \times 2$ Grid)**:
+   - **Left**: Scaled IQ Waveform
+   - **Right**: Direct RF FFT Spectrum
+2. **Bottom Section**:
+   - **Left Box**: Square Polar Radar Map (Target blip at $(El, Az)$ when active; drops to $0^\circ, 0^\circ$ idle when inactive)
+   - **Right Box**: Live Channel Telemetry & Diagnostics Card (Azimuth Bearing, Elevation, Multiplier, Peak Voltage, Peak Power, Tone Frequency)
 
 ---
 
