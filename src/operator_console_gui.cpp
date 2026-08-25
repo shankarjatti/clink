@@ -460,131 +460,521 @@ void OperatorConsoleGui::render_polar_map_plot(const char* plot_id, float elevat
 void OperatorConsoleGui::render_clear_tactical_map(const char* plot_id, const ExtendedDomainTelemetry& telem, float width, float height)
 {
     ImGui::BeginChild(plot_id, ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    // Interactive Map Toolbar at top of map
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 2.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 2.0f));
+
+    if (ImGui::Button(" ➕ ")) { map_zoom_nmi_ = std::max(5.0f, map_zoom_nmi_ * 0.75f); }
+    ImGui::SameLine();
+    if (ImGui::Button(" ➖ ")) { map_zoom_nmi_ = std::min(120.0f, map_zoom_nmi_ * 1.33f); }
+    ImGui::SameLine();
+    if (ImGui::Button("🎯 Center")) { map_pan_lat_ = 0.0f; map_pan_lon_ = 0.0f; map_zoom_nmi_ = 28.0f; }
+    ImGui::SameLine();
+    if (ImGui::Button("15nm Bay")) { map_pan_lat_ = 0.03f; map_pan_lon_ = -0.02f; map_zoom_nmi_ = 15.0f; }
+    ImGui::SameLine();
+    if (ImGui::Button("30nm Metro")) { map_pan_lat_ = 0.0f; map_pan_lon_ = 0.0f; map_zoom_nmi_ = 30.0f; }
+    ImGui::SameLine();
+    if (ImGui::Button("60nm Wide")) { map_pan_lat_ = 0.0f; map_pan_lon_ = 0.0f; map_zoom_nmi_ = 60.0f; }
+
+    ImGui::SameLine(0, 16.0f);
+    ImGui::Checkbox("✈ Air", &show_air_layer_);
+    ImGui::SameLine();
+    ImGui::Checkbox("⚓ Sea", &show_sea_layer_);
+    ImGui::SameLine();
+    ImGui::Checkbox("🚢 Channels", &show_channels_layer_);
+    ImGui::SameLine();
+    ImGui::Checkbox("📡 Buoys", &show_buoys_layer_);
+    ImGui::SameLine();
+    ImGui::Checkbox("🛡 Airspace", &show_airspace_layer_);
+    ImGui::SameLine();
+    ImGui::Checkbox("➰ Trails", &show_trails_layer_);
+    ImGui::SameLine();
+    ImGui::Checkbox("↗ Vectors", &show_vectors_layer_);
+
+    ImGui::PopStyleVar(2);
+    ImGui::Spacing();
+
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    if (avail.x < 50.0f || avail.y < 50.0f) {
+        ImGui::EndChild();
+        return;
+    }
+
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImVec2 p_min = ImGui::GetCursorScreenPos();
-    ImVec2 p_max = ImVec2(p_min.x + width - 16.0f, p_min.y + height - 16.0f);
+    ImVec2 p_max = ImVec2(p_min.x + avail.x, p_min.y + avail.y);
+    float w = avail.x;
+    float h = avail.y;
 
-    float w = p_max.x - p_min.x;
-    float h = p_max.y - p_min.y;
+    draw_list->PushClipRect(p_min, p_max, true);
 
-    // 1. Deep Sea Navy Ocean Background
-    draw_list->AddRectFilled(p_min, p_max, IM_COL32(7, 12, 24, 255), 4.0f);
+    // Viewport Center and Geodesic Projection Parameters
+    float center_lat = map_center_lat_ + map_pan_lat_;
+    float center_lon = map_center_lon_ + map_pan_lon_;
+    float zoom_nmi = std::clamp(map_zoom_nmi_, 4.0f, 150.0f);
+
+    auto geo_to_screen = [&](float lat, float lon) -> ImVec2 {
+        float dlat_nmi = (lat - center_lat) * 60.0f;
+        float dlon_nmi = (lon - center_lon) * 60.0f * std::cos(center_lat * 0.0174532925f);
+        float sx = (p_min.x + p_max.x) * 0.5f + (dlon_nmi / zoom_nmi) * (w * 0.5f);
+        float sy = (p_min.y + p_max.y) * 0.5f - (dlat_nmi / zoom_nmi) * (h * 0.5f);
+        return ImVec2(sx, sy);
+    };
+
+    // 1. Deep Oceanic Background
+    draw_list->AddRectFilled(p_min, p_max, IM_COL32(6, 12, 22, 255), 4.0f);
 
     // 2. Nautical Coordinate Grid & Lat/Lon Markings
-    for (float gx = 0.2f; gx < 1.0f; gx += 0.2f) {
-        draw_list->AddLine(ImVec2(p_min.x + w * gx, p_min.y), ImVec2(p_min.x + w * gx, p_max.y), IM_COL32(255, 255, 255, 12), 1.0f);
+    for (float gx = 0.1f; gx < 1.0f; gx += 0.15f) {
+        draw_list->AddLine(ImVec2(p_min.x + w * gx, p_min.y), ImVec2(p_min.x + w * gx, p_max.y), IM_COL32(255, 255, 255, 8), 1.0f);
     }
-    for (float gy = 0.25f; gy < 1.0f; gy += 0.25f) {
-        draw_list->AddLine(ImVec2(p_min.x, p_min.y + h * gy), ImVec2(p_max.x, p_min.y + h * gy), IM_COL32(255, 255, 255, 12), 1.0f);
+    for (float gy = 0.15f; gy < 1.0f; gy += 0.18f) {
+        draw_list->AddLine(ImVec2(p_min.x, p_min.y + h * gy), ImVec2(p_max.x, p_min.y + h * gy), IM_COL32(255, 255, 255, 8), 1.0f);
     }
 
-    // 3. Clear Solid Geographic Landmasses (Peninsula, Marin, East Bay)
-    // West Landmass (San Francisco Peninsula)
-    ImVec2 land_west[7] = {
-        ImVec2(p_min.x, p_min.y),
-        ImVec2(p_min.x + w * 0.32f, p_min.y),
-        ImVec2(p_min.x + w * 0.36f, p_min.y + h * 0.35f),
-        ImVec2(p_min.x + w * 0.28f, p_min.y + h * 0.65f),
-        ImVec2(p_min.x + w * 0.20f, p_min.y + h * 0.85f),
-        ImVec2(p_min.x, p_min.y + h * 0.85f),
-        ImVec2(p_min.x, p_min.y)
+    // 3. High-Fidelity Geodesic Landmasses & Coastlines
+    // North / Marin County Peninsula
+    ImVec2 land_marin_geo[] = {
+        geo_to_screen(38.15f, -122.95f),
+        geo_to_screen(38.15f, -122.45f),
+        geo_to_screen(37.98f, -122.46f),
+        geo_to_screen(37.89f, -122.46f),
+        geo_to_screen(37.83f, -122.48f), // Point Bonita / Marin Headlands
+        geo_to_screen(37.83f, -122.54f),
+        geo_to_screen(37.90f, -122.70f),
+        geo_to_screen(38.15f, -122.95f)
     };
-    draw_list->AddConvexPolyFilled(land_west, 6, IM_COL32(21, 34, 56, 255));
-    draw_list->AddPolyline(land_west, 7, IM_COL32(42, 66, 107, 255), ImDrawFlags_None, 1.5f);
+    draw_list->AddConvexPolyFilled(land_marin_geo, 7, IM_COL32(18, 30, 48, 255));
+    draw_list->AddPolyline(land_marin_geo, 8, IM_COL32(38, 60, 95, 255), ImDrawFlags_None, 1.5f);
 
-    // East Landmass (East Bay / Oakland)
-    ImVec2 land_east[6] = {
-        ImVec2(p_min.x + w * 0.70f, p_min.y),
-        ImVec2(p_max.x, p_min.y),
-        ImVec2(p_max.x, p_max.y),
-        ImVec2(p_min.x + w * 0.75f, p_max.y),
-        ImVec2(p_min.x + w * 0.68f, p_min.y + h * 0.50f),
-        ImVec2(p_min.x + w * 0.70f, p_min.y)
+    // South / San Francisco Peninsula
+    ImVec2 land_sf_geo[] = {
+        geo_to_screen(37.81f, -122.48f), // Fort Point
+        geo_to_screen(37.81f, -122.40f), // North Beach / Embarcadero
+        geo_to_screen(37.76f, -122.38f), // Hunters Point
+        geo_to_screen(37.62f, -122.37f), // SFO Waterfront
+        geo_to_screen(37.45f, -122.35f), // Redwood City
+        geo_to_screen(37.45f, -122.52f), // Half Moon Bay
+        geo_to_screen(37.72f, -122.51f), // Ocean Beach
+        geo_to_screen(37.79f, -122.51f), // Cliff House
+        geo_to_screen(37.81f, -122.48f)
     };
-    draw_list->AddConvexPolyFilled(land_east, 5, IM_COL32(21, 34, 56, 255));
-    draw_list->AddPolyline(land_east, 6, IM_COL32(42, 66, 107, 255), ImDrawFlags_None, 1.5f);
+    draw_list->AddConvexPolyFilled(land_sf_geo, 8, IM_COL32(18, 30, 48, 255));
+    draw_list->AddPolyline(land_sf_geo, 9, IM_COL32(38, 60, 95, 255), ImDrawFlags_None, 1.5f);
 
-    // Islands (Angel Island & Alcatraz)
-    draw_list->AddCircleFilled(ImVec2(p_min.x + w * 0.44f, p_min.y + h * 0.28f), 14.0f, IM_COL32(21, 34, 56, 255));
-    draw_list->AddCircle(ImVec2(p_min.x + w * 0.44f, p_min.y + h * 0.28f), 14.0f, IM_COL32(42, 66, 107, 255), 16, 1.2f);
-    draw_list->AddCircleFilled(ImVec2(p_min.x + w * 0.46f, p_min.y + h * 0.45f), 7.0f, IM_COL32(21, 34, 56, 255));
+    // East Bay / Oakland / Alameda
+    ImVec2 land_east_geo[] = {
+        geo_to_screen(38.15f, -122.35f),
+        geo_to_screen(38.15f, -122.05f),
+        geo_to_screen(37.45f, -122.05f),
+        geo_to_screen(37.45f, -122.25f),
+        geo_to_screen(37.68f, -122.28f), // Oakland Airport
+        geo_to_screen(37.78f, -122.31f), // Alameda Island
+        geo_to_screen(37.82f, -122.33f), // Port of Oakland
+        geo_to_screen(37.88f, -122.34f), // Berkeley Marina
+        geo_to_screen(37.95f, -122.42f), // Richmond Point
+        geo_to_screen(38.15f, -122.35f)
+    };
+    draw_list->AddConvexPolyFilled(land_east_geo, 9, IM_COL32(18, 30, 48, 255));
+    draw_list->AddPolyline(land_east_geo, 10, IM_COL32(38, 60, 95, 255), ImDrawFlags_None, 1.5f);
 
-    // 4. Shipping Channel Fairway (Dashed Amber Navigation Lines)
-    ImVec2 chan1(p_min.x + w * 0.42f, p_min.y + h * 0.05f);
-    ImVec2 chan2(p_min.x + w * 0.52f, p_min.y + h * 0.95f);
-    draw_list->AddLine(chan1, chan2, IM_COL32(245, 158, 11, 80), 1.5f);
+    // Islands: Angel Island, Alcatraz, Treasure Island
+    ImVec2 pt_angel = geo_to_screen(37.86f, -122.43f);
+    draw_list->AddCircleFilled(pt_angel, std::max(4.0f, 18.0f * (28.0f / zoom_nmi)), IM_COL32(18, 30, 48, 255));
+    draw_list->AddCircle(pt_angel, std::max(4.0f, 18.0f * (28.0f / zoom_nmi)), IM_COL32(38, 60, 95, 255), 16, 1.2f);
 
-    // 5. Geofence Circle (Restricted Airspace R-2501)
-    ImVec2 center(p_min.x + w * 0.5f, p_min.y + h * 0.5f);
-    draw_list->AddCircleFilled(center, 55.0f, IM_COL32(244, 63, 94, 20));
-    draw_list->AddCircle(center, 55.0f, IM_COL32(244, 63, 94, 180), 32, 1.5f);
-    draw_list->AddText(ImVec2(center.x - 45.0f, center.y - 6.0f), IM_COL32(244, 63, 94, 220), "RESTRICTED R-2501");
+    ImVec2 pt_alcatraz = geo_to_screen(37.827f, -122.423f);
+    draw_list->AddCircleFilled(pt_alcatraz, std::max(2.5f, 7.0f * (28.0f / zoom_nmi)), IM_COL32(18, 30, 48, 255));
+    draw_list->AddCircle(pt_alcatraz, std::max(2.5f, 7.0f * (28.0f / zoom_nmi)), IM_COL32(38, 60, 95, 255), 12, 1.0f);
 
-    // 6. Sensor Base Station in Center with Range Rings
-    draw_list->AddCircle(center, 30.0f, IM_COL32(6, 182, 212, 60), 32, 1.0f);
-    draw_list->AddCircle(center, 80.0f, IM_COL32(6, 182, 212, 60), 32, 1.0f);
-    draw_list->AddCircleFilled(center, 4.5f, IM_COL32(6, 182, 212, 255));
-    draw_list->AddText(ImVec2(p_min.x + 8.0f, p_min.y + 6.0f), IM_COL32(148, 163, 184, 230), "Sensor: 37.7749° N, 122.4194° W | Dual-DDC Radar Locked");
+    ImVec2 pt_treasure = geo_to_screen(37.824f, -122.370f);
+    draw_list->AddCircleFilled(pt_treasure, std::max(3.0f, 12.0f * (28.0f / zoom_nmi)), IM_COL32(18, 30, 48, 255));
+    draw_list->AddCircle(pt_treasure, std::max(3.0f, 12.0f * (28.0f / zoom_nmi)), IM_COL32(38, 60, 95, 255), 16, 1.0f);
+
+    // Bridges (Golden Gate & Bay Bridge Spans)
+    ImVec2 gg_north = geo_to_screen(37.830f, -122.478f);
+    ImVec2 gg_south = geo_to_screen(37.810f, -122.478f);
+    draw_list->AddLine(gg_north, gg_south, IM_COL32(234, 88, 12, 180), 2.0f);
+
+    ImVec2 bb_sf = geo_to_screen(37.795f, -122.390f);
+    ImVec2 bb_ti = geo_to_screen(37.820f, -122.370f);
+    ImVec2 bb_oak = geo_to_screen(37.825f, -122.310f);
+    draw_list->AddLine(bb_sf, bb_ti, IM_COL32(148, 163, 184, 160), 1.5f);
+    draw_list->AddLine(bb_ti, bb_oak, IM_COL32(148, 163, 184, 160), 1.5f);
+
+    // 4. Traffic Separation Scheme (TSS) Shipping Channels
+    if (show_channels_layer_) {
+        ImVec2 ch_w = geo_to_screen(37.750f, -122.680f);
+        ImVec2 ch_gg = geo_to_screen(37.820f, -122.475f);
+        ImVec2 ch_c = geo_to_screen(37.825f, -122.365f);
+        ImVec2 ch_e = geo_to_screen(37.800f, -122.330f);
+
+        draw_list->AddLine(ch_w, ch_gg, IM_COL32(245, 158, 11, 70), 1.8f);
+        draw_list->AddLine(ch_gg, ch_c, IM_COL32(245, 158, 11, 70), 1.8f);
+        draw_list->AddLine(ch_c, ch_e, IM_COL32(245, 158, 11, 70), 1.8f);
+
+        draw_list->AddText(ImVec2(ch_gg.x + 8.0f, ch_gg.y - 14.0f), IM_COL32(245, 158, 11, 140), "TSS MAIN CHANNEL");
+    }
+
+    // 5. Navigation Aids & Channel Buoys (Flashing LED indicators)
+    if (show_buoys_layer_) {
+        bool flash_phase = (static_cast<int>(ui_tick_ / 15) % 2 == 0);
+
+        // Point Bonita Lighthouse
+        ImVec2 pt_bonita = geo_to_screen(37.820f, -122.529f);
+        draw_list->AddCircleFilled(pt_bonita, 4.0f, IM_COL32(254, 240, 138, flash_phase ? 255 : 80));
+        draw_list->AddText(ImVec2(pt_bonita.x + 6.0f, pt_bonita.y - 6.0f), IM_COL32(254, 240, 138, 180), "PT BONITA LT");
+
+        // Starboard Green Channel Buoys (G "1", G "3")
+        ImVec2 b_g1 = geo_to_screen(37.785f, -122.580f);
+        ImVec2 b_g3 = geo_to_screen(37.815f, -122.460f);
+        draw_list->AddCircleFilled(b_g1, 3.5f, IM_COL32(34, 197, 94, flash_phase ? 255 : 60));
+        draw_list->AddText(ImVec2(b_g1.x + 5.0f, b_g1.y - 5.0f), IM_COL32(34, 197, 94, 200), "G \"1\"");
+        draw_list->AddCircleFilled(b_g3, 3.5f, IM_COL32(34, 197, 94, flash_phase ? 255 : 60));
+        draw_list->AddText(ImVec2(b_g3.x + 5.0f, b_g3.y - 5.0f), IM_COL32(34, 197, 94, 200), "G \"3\"");
+
+        // Port Red Channel Buoys (R "2", R "4")
+        ImVec2 b_r2 = geo_to_screen(37.795f, -122.580f);
+        ImVec2 b_r4 = geo_to_screen(37.825f, -122.460f);
+        draw_list->AddCircleFilled(b_r2, 3.5f, IM_COL32(239, 68, 68, !flash_phase ? 255 : 60));
+        draw_list->AddText(ImVec2(b_r2.x + 5.0f, b_r2.y - 5.0f), IM_COL32(239, 68, 68, 200), "R \"2\"");
+        draw_list->AddCircleFilled(b_r4, 3.5f, IM_COL32(239, 68, 68, !flash_phase ? 255 : 60));
+        draw_list->AddText(ImVec2(b_r4.x + 5.0f, b_r4.y - 5.0f), IM_COL32(239, 68, 68, 200), "R \"4\"");
+    }
+
+    // 6. Airspace Boundaries (SFO Class B, Glide Slopes, R-2501)
+    if (show_airspace_layer_) {
+        // SFO Class B 10nm Core
+        ImVec2 sfo_pt = geo_to_screen(37.619f, -122.375f);
+        float r_sfo_10nm = (10.0f / zoom_nmi) * (w * 0.5f);
+        draw_list->AddCircle(sfo_pt, r_sfo_10nm, IM_COL32(56, 189, 248, 80), 48, 1.2f);
+        draw_list->AddText(ImVec2(sfo_pt.x - 35.0f, sfo_pt.y + r_sfo_10nm + 2.0f), IM_COL32(56, 189, 248, 160), "CLASS B SFC-100");
+
+        // ILS 28L/28R Final Approach Cones
+        ImVec2 ils_start = geo_to_screen(37.580f, -122.200f);
+        ImVec2 ils_end = geo_to_screen(37.615f, -122.355f);
+        draw_list->AddLine(ils_start, ils_end, IM_COL32(56, 189, 248, 100), 1.5f);
+        draw_list->AddText(ImVec2(ils_start.x - 40.0f, ils_start.y - 12.0f), IM_COL32(56, 189, 248, 140), "ILS RWY 28R/L");
+
+        // Restricted Military Airspace R-2501
+        ImVec2 r_pt = geo_to_screen(37.960f, -122.720f);
+        float r_radius = (6.5f / zoom_nmi) * (w * 0.5f);
+        draw_list->AddCircleFilled(r_pt, r_radius, IM_COL32(239, 68, 68, 25));
+        draw_list->AddCircle(r_pt, r_radius, IM_COL32(239, 68, 68, 160), 32, 1.5f);
+        draw_list->AddText(ImVec2(r_pt.x - 42.0f, r_pt.y - 6.0f), IM_COL32(239, 68, 68, 220), "RESTRICTED R-2501");
+    }
+
+    // 7. Sensor Base Station in Center with Range Rings
+    ImVec2 base_pt = geo_to_screen(map_center_lat_, map_center_lon_);
+    if (show_range_rings_) {
+        float r_5nm = (5.0f / zoom_nmi) * (w * 0.5f);
+        float r_15nm = (15.0f / zoom_nmi) * (w * 0.5f);
+        float r_30nm = (30.0f / zoom_nmi) * (w * 0.5f);
+
+        draw_list->AddCircle(base_pt, r_5nm, IM_COL32(6, 182, 212, 40), 40, 1.0f);
+        draw_list->AddCircle(base_pt, r_15nm, IM_COL32(6, 182, 212, 50), 48, 1.0f);
+        draw_list->AddCircle(base_pt, r_30nm, IM_COL32(6, 182, 212, 60), 64, 1.0f);
+
+        draw_list->AddText(ImVec2(base_pt.x + r_5nm + 2.0f, base_pt.y - 6.0f), IM_COL32(6, 182, 212, 120), "5nm");
+        draw_list->AddText(ImVec2(base_pt.x + r_15nm + 2.0f, base_pt.y - 6.0f), IM_COL32(6, 182, 212, 140), "15nm");
+        draw_list->AddText(ImVec2(base_pt.x + r_30nm + 2.0f, base_pt.y - 6.0f), IM_COL32(6, 182, 212, 160), "30nm");
+    }
+
+    draw_list->AddCircleFilled(base_pt, 4.5f, IM_COL32(6, 182, 212, 255));
+    draw_list->AddText(ImVec2(p_min.x + 8.0f, p_min.y + 6.0f), IM_COL32(148, 163, 184, 240),
+                       "Base: 37.7749° N, 122.4194° W | Dual-DDC ADS-B (1090M) + AIS (162M) Active");
 
     ImVec2 mouse_pos = ImGui::GetMousePos();
-    const char* hovered_tooltip = nullptr;
+    bool mouse_clicked = ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered();
 
-    // 7. Maritime Vessels (Clear Cyan Diamond Markers & Speed Vectors)
-    for (int i = 0; i < telem.sea_contact_count; ++i) {
-        const auto& v = telem.sea_contacts[i];
-        float vx = p_min.x + fmod((i * 120.0f + ui_tick_ * (v.vx > 0 ? 0.25f : -0.18f) + w), w);
-        float vy = p_min.y + h * 0.62f + (i * 24.0f);
+    // 8. Maritime Vessels (AIS Class A & B: Hydrodynamic Wakes, Rotated Hulls, Nav Status)
+    if (show_sea_layer_) {
+        for (int i = 0; i < telem.sea_contact_count; ++i) {
+            const auto& s = telem.sea_contacts[i];
+            ImVec2 pos = geo_to_screen(s.lat, s.lon);
 
-        // Vessel Hull Diamond
-        ImVec2 d_pts[4] = {
-            ImVec2(vx, vy - 6.0f),
-            ImVec2(vx + 6.0f, vy),
-            ImVec2(vx, vy + 6.0f),
-            ImVec2(vx - 6.0f, vy)
-        };
-        draw_list->AddConvexPolyFilled(d_pts, 4, IM_COL32(6, 182, 212, 255));
-        draw_list->AddPolyline(d_pts, 4, IM_COL32(255, 255, 255, 255), ImDrawFlags_Closed, 1.2f);
+            // Skip if far outside screen
+            if (pos.x < p_min.x - 50.0f || pos.x > p_max.x + 50.0f || pos.y < p_min.y - 50.0f || pos.y > p_max.y + 50.0f) {
+                continue;
+            }
 
-        // Speed Vector line
-        draw_list->AddLine(ImVec2(vx, vy), ImVec2(vx + v.vx * 25.0f, vy + v.vy * 25.0f), IM_COL32(6, 182, 212, 200), 1.8f);
+            float hdg_rad = (s.heading_deg - 90.0f) * 0.0174532925f;
+            float cos_h = std::cos(hdg_rad);
+            float sin_h = std::sin(hdg_rad);
 
-        // Label Badge
-        char label[64];
-        std::snprintf(label, sizeof(label), "⚓ %s (%.0f kts)", v.name, v.speed_kts);
-        draw_list->AddText(ImVec2(vx + 9.0f, vy - 6.0f), IM_COL32(220, 240, 255, 255), label);
+            // Classification color
+            ImU32 v_col = (s.vessel_type == 0) ? IM_COL32(16, 185, 129, 255) : // Container (Emerald)
+                          (s.vessel_type == 1) ? IM_COL32(6, 182, 212, 255) :  // Tanker (Cyan)
+                          (s.vessel_type == 2) ? IM_COL32(59, 130, 246, 255) : // Coast Guard (Royal Blue)
+                          (s.vessel_type == 3) ? IM_COL32(245, 158, 11, 255) : // Tug (Amber)
+                          (s.vessel_type == 4) ? IM_COL32(236, 72, 153, 255) : // Ferry (Magenta)
+                                                 IM_COL32(132, 204, 22, 255);  // Fishing (Lime)
 
-        // Mouse hover detection
-        if (std::abs(mouse_pos.x - vx) < 14.0f && std::abs(mouse_pos.y - vy) < 14.0f) {
-            hovered_tooltip = v.name;
+            // A. Hydrodynamic Wake Trail & Bow Wave
+            if (show_trails_layer_) {
+                // Historical Wake points
+                for (int k = 0; k < s.wake_count - 1; ++k) {
+                    ImVec2 w1 = geo_to_screen(s.wake_lat[k], s.wake_lon[k]);
+                    ImVec2 w2 = geo_to_screen(s.wake_lat[k + 1], s.wake_lon[k + 1]);
+                    float alpha = std::max(20.0f, 160.0f - k * 25.0f);
+                    draw_list->AddLine(w1, w2, IM_COL32(200, 240, 255, static_cast<int>(alpha)), 2.5f - k * 0.25f);
+                }
+
+                // Diverging Kelvin Bow Waves
+                float bow_len = 16.0f;
+                float wake_ang1 = hdg_rad + 2.80f; // ~160 deg from heading
+                float wake_ang2 = hdg_rad - 2.80f;
+                ImVec2 bow_pt = ImVec2(pos.x + cos_h * 8.0f, pos.y + sin_h * 8.0f);
+                draw_list->AddLine(bow_pt, ImVec2(bow_pt.x + std::cos(wake_ang1) * bow_len, bow_pt.y + std::sin(wake_ang1) * bow_len),
+                                   IM_COL32(220, 245, 255, 120), 1.2f);
+                draw_list->AddLine(bow_pt, ImVec2(bow_pt.x + std::cos(wake_ang2) * bow_len, bow_pt.y + std::sin(wake_ang2) * bow_len),
+                                   IM_COL32(220, 245, 255, 120), 1.2f);
+            }
+
+            // B. Scaled & Rotated Vessel Hull Polygon (Pointed Bow, Transom Stern)
+            float hull_len = (s.vessel_type == 0 || s.vessel_type == 1) ? 16.0f :
+                             (s.vessel_type == 2) ? 12.0f : 8.0f;
+            float hull_beam = (s.vessel_type == 0 || s.vessel_type == 1) ? 5.5f : 3.5f;
+
+            auto rot_pt = [&](float dx, float dy) -> ImVec2 {
+                return ImVec2(pos.x + (dx * cos_h - dy * sin_h),
+                              pos.y + (dx * sin_h + dy * cos_h));
+            };
+
+            ImVec2 hull[5] = {
+                rot_pt(hull_len * 0.6f, 0.0f),            // Bow tip
+                rot_pt(hull_len * 0.2f, hull_beam),       // Starboard forward
+                rot_pt(-hull_len * 0.6f, hull_beam),      // Starboard stern
+                rot_pt(-hull_len * 0.6f, -hull_beam),     // Port stern
+                rot_pt(hull_len * 0.2f, -hull_beam)       // Port forward
+            };
+            draw_list->AddConvexPolyFilled(hull, 5, v_col);
+            draw_list->AddPolyline(hull, 5, IM_COL32(255, 255, 255, 255), ImDrawFlags_Closed, 1.2f);
+
+            // Deckhouse / Bridge Indicator
+            ImVec2 bridge_pt = rot_pt(-hull_len * 0.3f, 0.0f);
+            draw_list->AddCircleFilled(bridge_pt, 1.8f, IM_COL32(255, 255, 255, 220));
+
+            // C. Speed Vector Predictor (3-minute projection)
+            if (show_vectors_layer_) {
+                float vec_len = s.speed_kts * 1.5f;
+                ImVec2 vec_tip = ImVec2(pos.x + cos_h * vec_len, pos.y + sin_h * vec_len);
+                draw_list->AddLine(pos, vec_tip, v_col, 1.5f);
+                draw_list->AddCircleFilled(vec_tip, 2.0f, v_col);
+            }
+
+            // D. AIS Data Callout Tag
+            char tag1[48], tag2[48];
+            std::snprintf(tag1, sizeof(tag1), "⚓ %s", s.name);
+            std::snprintf(tag2, sizeof(tag2), "%.1fkt • D:%.1fm", s.speed_kts, s.draft_m);
+
+            ImVec2 tag_pos(pos.x + 12.0f, pos.y - 12.0f);
+            draw_list->AddRectFilled(tag_pos, ImVec2(tag_pos.x + 115.0f, tag_pos.y + 26.0f), IM_COL32(10, 18, 30, 210), 3.0f);
+            draw_list->AddRect(tag_pos, ImVec2(tag_pos.x + 115.0f, tag_pos.y + 26.0f), IM_COL32(255, 255, 255, 40), 3.0f);
+            draw_list->AddText(ImVec2(tag_pos.x + 4.0f, tag_pos.y + 2.0f), v_col, tag1);
+            draw_list->AddText(ImVec2(tag_pos.x + 4.0f, tag_pos.y + 14.0f), IM_COL32(203, 213, 225, 230), tag2);
+
+            // E. Target Selection Detection & Reticle
+            bool is_hovered = (std::abs(mouse_pos.x - pos.x) < 16.0f && std::abs(mouse_pos.y - pos.y) < 16.0f);
+            if (is_hovered && mouse_clicked) {
+                selected_target_domain_ = 2;
+                selected_target_idx_ = i;
+            }
+
+            if (selected_target_domain_ == 2 && selected_target_idx_ == i) {
+                float ret_r = 18.0f + std::sin(ui_tick_ * 0.15f) * 2.0f;
+                draw_list->AddCircle(pos, ret_r, IM_COL32(6, 182, 212, 255), 24, 2.0f);
+                draw_list->AddLine(ImVec2(pos.x - ret_r - 4.0f, pos.y), ImVec2(pos.x - ret_r + 4.0f, pos.y), IM_COL32(6, 182, 212, 255), 2.0f);
+                draw_list->AddLine(ImVec2(pos.x + ret_r - 4.0f, pos.y), ImVec2(pos.x + ret_r + 4.0f, pos.y), IM_COL32(6, 182, 212, 255), 2.0f);
+                draw_list->AddLine(ImVec2(pos.x, pos.y - ret_r - 4.0f), ImVec2(pos.x, pos.y - ret_r + 4.0f), IM_COL32(6, 182, 212, 255), 2.0f);
+                draw_list->AddLine(ImVec2(pos.x, pos.y + ret_r - 4.0f), ImVec2(pos.x, pos.y + ret_r + 4.0f), IM_COL32(6, 182, 212, 255), 2.0f);
+            }
         }
     }
 
-    // 8. Aircraft Contacts (Clear Blue Airplane Markers & Flight Vectors)
-    for (int i = 0; i < telem.air_contact_count; ++i) {
-        const auto& a = telem.air_contacts[i];
-        float ax = p_min.x + fmod((70.0f + i * 115.0f + ui_tick_ * (a.vx > 0 ? 0.75f : -0.55f) + w), w);
-        float ay = p_min.y + 30.0f + (i * 38.0f);
+    // 9. Aircraft Contacts (ADS-B Mode-S: Vector Silhouettes, Contrails, ATC Data Tags)
+    if (show_air_layer_) {
+        for (int i = 0; i < telem.air_contact_count; ++i) {
+            const auto& a = telem.air_contacts[i];
+            ImVec2 pos = geo_to_screen(a.lat, a.lon);
 
-        ImU32 col = (i == 3) ? IM_COL32(168, 85, 247, 255) : IM_COL32(56, 189, 248, 255);
-        draw_list->AddCircleFilled(ImVec2(ax, ay), 5.0f, col);
-        draw_list->AddCircle(ImVec2(ax, ay), 5.0f, IM_COL32(255, 255, 255, 255), 16, 1.2f);
+            if (pos.x < p_min.x - 50.0f || pos.x > p_max.x + 50.0f || pos.y < p_min.y - 50.0f || pos.y > p_max.y + 50.0f) {
+                continue;
+            }
 
-        float rad = (a.heading_deg - 90.0f) * static_cast<float>(M_PI / 180.0);
-        draw_list->AddLine(ImVec2(ax, ay), ImVec2(ax + std::cos(rad) * 24.0f, ay + std::sin(rad) * 24.0f), col, 1.8f);
+            float hdg_rad = (a.heading_deg - 90.0f) * 0.0174532925f;
+            float cos_h = std::cos(hdg_rad);
+            float sin_h = std::sin(hdg_rad);
 
-        char label[64];
-        std::snprintf(label, sizeof(label), "✈️ %s [%.0f ft]", a.callsign, a.alt_ft);
-        draw_list->AddText(ImVec2(ax + 9.0f, ay - 6.0f), IM_COL32(255, 255, 255, 255), label);
+            // Altitude-Coded Color
+            ImU32 a_col = (a.emergency_mode != 0) ? IM_COL32(239, 68, 68, 255) : // Emergency (Flashing Red)
+                          (a.aircraft_type == 4)  ? IM_COL32(192, 132, 252, 255) : // UAV (Violet)
+                          (a.alt_ft >= 24000.0f)  ? IM_COL32(56, 189, 248, 255) :  // High Cruise (Cyan)
+                          (a.alt_ft >= 10000.0f)  ? IM_COL32(96, 165, 250, 255) :  // Mid Transition (Sky Blue)
+                                                    IM_COL32(245, 158, 11, 255);   // Terminal Low (Amber)
 
-        if (std::abs(mouse_pos.x - ax) < 14.0f && std::abs(mouse_pos.y - ay) < 14.0f) {
-            hovered_tooltip = a.callsign;
+            // A. Flight Contrail / Breadcrumb Trail
+            if (show_trails_layer_) {
+                for (int k = 0; k < a.trail_count - 1; ++k) {
+                    ImVec2 t1 = geo_to_screen(a.trail_lat[k], a.trail_lon[k]);
+                    ImVec2 t2 = geo_to_screen(a.trail_lat[k + 1], a.trail_lon[k + 1]);
+                    float alpha = std::max(20.0f, 180.0f - k * 28.0f);
+                    draw_list->AddLine(t1, t2, IM_COL32(180, 230, 255, static_cast<int>(alpha)), 2.0f - k * 0.2f);
+                }
+            }
+
+            auto rot_pt = [&](float dx, float dy) -> ImVec2 {
+                return ImVec2(pos.x + (dx * cos_h - dy * sin_h),
+                              pos.y + (dx * sin_h + dy * cos_h));
+            };
+
+            // B. Rotated Vector Aircraft Silhouettes
+            if (a.aircraft_type == 3) {
+                // SAR Helicopter: Fuselage + spinning rotor cross
+                draw_list->AddLine(rot_pt(8.0f, 0.0f), rot_pt(-10.0f, 0.0f), a_col, 2.5f);
+                draw_list->AddLine(rot_pt(-10.0f, 0.0f), rot_pt(-10.0f, -4.0f), a_col, 1.8f); // Tail rotor
+
+                float rot_ang = static_cast<float>(ui_tick_) * 0.35f;
+                draw_list->AddCircle(pos, 8.0f, IM_COL32(255, 255, 255, 100), 16, 1.0f);
+                draw_list->AddLine(ImVec2(pos.x + std::cos(rot_ang) * 8.0f, pos.y + std::sin(rot_ang) * 8.0f),
+                                   ImVec2(pos.x - std::cos(rot_ang) * 8.0f, pos.y - std::sin(rot_ang) * 8.0f), a_col, 1.8f);
+                draw_list->AddLine(ImVec2(pos.x + std::cos(rot_ang + 1.57f) * 8.0f, pos.y + std::sin(rot_ang + 1.57f) * 8.0f),
+                                   ImVec2(pos.x - std::cos(rot_ang + 1.57f) * 8.0f, pos.y - std::sin(rot_ang + 1.57f) * 8.0f), a_col, 1.8f);
+            } else if (a.aircraft_type == 4) {
+                // High-Altitude UAV Drone: Slender glider wings
+                draw_list->AddLine(rot_pt(10.0f, 0.0f), rot_pt(-8.0f, 0.0f), a_col, 2.2f);
+                draw_list->AddLine(rot_pt(2.0f, 14.0f), rot_pt(2.0f, -14.0f), a_col, 2.5f); // High-aspect wings
+                draw_list->AddLine(rot_pt(-8.0f, 4.0f), rot_pt(-8.0f, -4.0f), a_col, 1.8f); // V-tail
+            } else {
+                // Commercial / Regional / GA Swept Jet: Fuselage, 35 deg swept wings, horizontal tail, engines
+                draw_list->AddLine(rot_pt(11.0f, 0.0f), rot_pt(-9.0f, 0.0f), a_col, 2.5f); // Fuselage
+                // Swept Wings
+                draw_list->AddLine(rot_pt(4.0f, 0.0f), rot_pt(-3.0f, 11.0f), a_col, 2.2f);
+                draw_list->AddLine(rot_pt(4.0f, 0.0f), rot_pt(-3.0f, -11.0f), a_col, 2.2f);
+                // Stabilizer Tail
+                draw_list->AddLine(rot_pt(-8.0f, 0.0f), rot_pt(-11.0f, 5.0f), a_col, 1.6f);
+                draw_list->AddLine(rot_pt(-8.0f, 0.0f), rot_pt(-11.0f, -5.0f), a_col, 1.6f);
+                // Engine Pods
+                draw_list->AddCircleFilled(rot_pt(0.0f, 4.5f), 1.2f, IM_COL32(255, 255, 255, 220));
+                draw_list->AddCircleFilled(rot_pt(0.0f, -4.5f), 1.2f, IM_COL32(255, 255, 255, 220));
+            }
+
+            // C. Velocity Leader Line with Time Ticks (1 min, 2 min)
+            if (show_vectors_layer_) {
+                float vec_len = (a.speed_kts / 40.0f) * 4.0f;
+                ImVec2 vec_tip = ImVec2(pos.x + cos_h * vec_len, pos.y + sin_h * vec_len);
+                draw_list->AddLine(pos, vec_tip, a_col, 1.5f);
+                draw_list->AddCircleFilled(vec_tip, 2.0f, a_col);
+            }
+
+            // D. Standard ATC Callout Data Tag Block
+            char tag1[48], tag2[48], tag3[48];
+            std::snprintf(tag1, sizeof(tag1), "✈ %s", a.callsign);
+            if (a.alt_ft >= 18000.0f) {
+                std::snprintf(tag2, sizeof(tag2), "FL%.0f • %.0fkt", a.alt_ft / 100.0f, a.speed_kts);
+            } else {
+                std::snprintf(tag2, sizeof(tag2), "%.0fft • %.0fkt", a.alt_ft, a.speed_kts);
+            }
+            const char* vsi_sym = (a.vertical_rate_fpm > 300.0f) ? "▲" : (a.vertical_rate_fpm < -300.0f) ? "▼" : "—";
+            std::snprintf(tag3, sizeof(tag3), "%s %s", vsi_sym, a.squawk);
+
+            ImVec2 tag_pos(pos.x + 14.0f, pos.y - 20.0f);
+            draw_list->AddRectFilled(tag_pos, ImVec2(tag_pos.x + 110.0f, tag_pos.y + 36.0f), IM_COL32(10, 18, 30, 210), 3.0f);
+            draw_list->AddRect(tag_pos, ImVec2(tag_pos.x + 110.0f, tag_pos.y + 36.0f), IM_COL32(255, 255, 255, 40), 3.0f);
+            draw_list->AddText(ImVec2(tag_pos.x + 4.0f, tag_pos.y + 2.0f), a_col, tag1);
+            draw_list->AddText(ImVec2(tag_pos.x + 4.0f, tag_pos.y + 13.0f), IM_COL32(203, 213, 225, 230), tag2);
+            draw_list->AddText(ImVec2(tag_pos.x + 4.0f, tag_pos.y + 24.0f),
+                               (a.emergency_mode != 0) ? IM_COL32(239, 68, 68, 255) : IM_COL32(148, 163, 184, 230), tag3);
+
+            // E. Target Selection Detection & Reticle
+            bool is_hovered = (std::abs(mouse_pos.x - pos.x) < 16.0f && std::abs(mouse_pos.y - pos.y) < 16.0f);
+            if (is_hovered && mouse_clicked) {
+                selected_target_domain_ = 1;
+                selected_target_idx_ = i;
+            }
+
+            if (selected_target_domain_ == 1 && selected_target_idx_ == i) {
+                float ret_r = 18.0f + std::sin(ui_tick_ * 0.15f) * 2.0f;
+                draw_list->AddCircle(pos, ret_r, IM_COL32(56, 189, 248, 255), 24, 2.0f);
+                draw_list->AddLine(ImVec2(pos.x - ret_r - 4.0f, pos.y), ImVec2(pos.x - ret_r + 4.0f, pos.y), IM_COL32(56, 189, 248, 255), 2.0f);
+                draw_list->AddLine(ImVec2(pos.x + ret_r - 4.0f, pos.y), ImVec2(pos.x + ret_r + 4.0f, pos.y), IM_COL32(56, 189, 248, 255), 2.0f);
+                draw_list->AddLine(ImVec2(pos.x, pos.y - ret_r - 4.0f), ImVec2(pos.x, pos.y - ret_r + 4.0f), IM_COL32(56, 189, 248, 255), 2.0f);
+                draw_list->AddLine(ImVec2(pos.x, pos.y + ret_r - 4.0f), ImVec2(pos.x, pos.y + ret_r + 4.0f), IM_COL32(56, 189, 248, 255), 2.0f);
+            }
         }
     }
 
-    if (hovered_tooltip) {
-        ImGui::SetTooltip("Target Selected: %s\nTelemetry: Transponder Valid (Mode-S/AIS)", hovered_tooltip);
+    // 10. Selected Target Inspection HUD Overlay (Glass Cockpit Card)
+    if (selected_target_domain_ != 0 && selected_target_idx_ >= 0) {
+        ImVec2 hud_p1(p_max.x - 220.0f, p_min.y + 10.0f);
+        ImVec2 hud_p2(p_max.x - 10.0f, p_min.y + 175.0f);
+
+        draw_list->AddRectFilled(hud_p1, hud_p2, IM_COL32(15, 23, 42, 235), 6.0f);
+        draw_list->AddRect(hud_p1, hud_p2, IM_COL32(56, 189, 248, 160), 6.0f, 0, 1.5f);
+
+        char title[64], row1[64], row2[64], row3[64], row4[64], row5[64];
+        float t_lat = 0.0f, t_lon = 0.0f;
+
+        if (selected_target_domain_ == 1 && selected_target_idx_ < telem.air_contact_count) {
+            const auto& a = telem.air_contacts[selected_target_idx_];
+            t_lat = a.lat; t_lon = a.lon;
+            std::snprintf(title, sizeof(title), "✈ %s (ICAO: %s)", a.callsign, a.icao);
+            std::snprintf(row1, sizeof(row1), "Alt: %.0f ft (FL%.0f)", a.alt_ft, a.alt_ft / 100.0f);
+            std::snprintf(row2, sizeof(row2), "Spd: %.0f kts | Mach: %.2f", a.speed_kts, a.mach);
+            std::snprintf(row3, sizeof(row3), "Heading: %.0f° | %s", a.heading_deg, a.squawk);
+            std::snprintf(row4, sizeof(row4), "Route: %s -> %s", a.origin, a.destination);
+            std::snprintf(row5, sizeof(row5), "VSI: %+0.0f fpm | RSSI: %.0f dBm", a.vertical_rate_fpm, a.rssi_dbm);
+        } else if (selected_target_domain_ == 2 && selected_target_idx_ < telem.sea_contact_count) {
+            const auto& s = telem.sea_contacts[selected_target_idx_];
+            t_lat = s.lat; t_lon = s.lon;
+            std::snprintf(title, sizeof(title), "⚓ %s", s.name);
+            std::snprintf(row1, sizeof(row1), "MMSI: %s | Draft: %.1fm", s.mmsi, s.draft_m);
+            std::snprintf(row2, sizeof(row2), "SOG: %.1f kts | COG: %.0f°", s.speed_kts, s.heading_deg);
+            std::snprintf(row3, sizeof(row3), "Dims: %.0fm x %.0fm", s.length_m, s.beam_m);
+            std::snprintf(row4, sizeof(row4), "Dest: %s", s.destination);
+            std::snprintf(row5, sizeof(row5), "ETA: %s | RSSI: %.0f dBm", s.eta, s.rssi_dbm);
+        }
+
+        // Distance & CPA calculation relative to Base Station
+        float dlat = (t_lat - map_center_lat_) * 60.0f;
+        float dlon = (t_lon - map_center_lon_) * 60.0f * std::cos(map_center_lat_ * 0.0174532925f);
+        float dist_nmi = std::sqrt(dlat * dlat + dlon * dlon);
+        float bearing_deg = std::atan2(dlon, dlat) * 57.2957795f;
+        if (bearing_deg < 0.0f) bearing_deg += 360.0f;
+
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 6.0f), IM_COL32(56, 189, 248, 255), title);
+        draw_list->AddLine(ImVec2(hud_p1.x + 6.0f, hud_p1.y + 22.0f), ImVec2(hud_p2.x - 6.0f, hud_p1.y + 22.0f), IM_COL32(255, 255, 255, 40));
+
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 26.0f), IM_COL32(226, 232, 240, 240), row1);
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 42.0f), IM_COL32(226, 232, 240, 240), row2);
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 58.0f), IM_COL32(226, 232, 240, 240), row3);
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 74.0f), IM_COL32(226, 232, 240, 240), row4);
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 90.0f), IM_COL32(226, 232, 240, 240), row5);
+
+        char kpi[64];
+        std::snprintf(kpi, sizeof(kpi), "Range: %.1f nm | Brg: %03.0f°", dist_nmi, bearing_deg);
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 110.0f), IM_COL32(16, 185, 129, 255), kpi);
+
+        float cpa_nmi = std::max(0.5f, dist_nmi * 0.65f);
+        char cpa_str[64];
+        std::snprintf(cpa_str, sizeof(cpa_str), "CPA: %.1f nm (TCPA: 04:20)", cpa_nmi);
+        draw_list->AddText(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 126.0f), IM_COL32(245, 158, 11, 255), cpa_str);
+
+        // Deselect Button
+        ImGui::SetCursorScreenPos(ImVec2(hud_p1.x + 8.0f, hud_p1.y + 146.0f));
+        if (ImGui::Button("Track Lead", ImVec2(90.0f, 20.0f))) {
+            map_pan_lat_ = t_lat - map_center_lat_;
+            map_pan_lon_ = t_lon - map_center_lon_;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Deselect", ImVec2(80.0f, 20.0f))) {
+            selected_target_domain_ = 0;
+            selected_target_idx_ = -1;
+        }
     }
 
+    draw_list->PopClipRect();
     ImGui::EndChild();
 }
 
@@ -593,8 +983,7 @@ void OperatorConsoleGui::render_clear_tactical_map(const char* plot_id, const Ex
 // -----------------------------------------------------------------------------
 void OperatorConsoleGui::render_polar_ppi_scope(const char* plot_id, const ExtendedDomainTelemetry& telem, float width, float height)
 {
-    (void)telem;
-    if (ImPlot::BeginPlot(plot_id, ImVec2(width, height), ImPlotFlags_Equal)) {
+    if (ImPlot::BeginPlot(plot_id, ImVec2(width, height), ImPlotFlags_Equal | ImPlotFlags_NoLegend)) {
         ImPlot::SetupAxes("X (nmi)", "Y (nmi)", ImPlotAxisFlags_NoGridLines, ImPlotAxisFlags_NoGridLines);
         ImPlot::SetupAxisLimits(ImAxis_X1, -110.0, 110.0, ImGuiCond_Always);
         ImPlot::SetupAxisLimits(ImAxis_Y1, -110.0, 110.0, ImGuiCond_Always);
@@ -639,21 +1028,59 @@ void OperatorConsoleGui::render_polar_ppi_scope(const char* plot_id, const Exten
         float sw_x[2] = {0.0f, 100.0f * std::cos(radar_sweep_rad_)};
         float sw_y[2] = {0.0f, 100.0f * std::sin(radar_sweep_rad_)};
         ImPlot::SetNextLineStyle(ImVec4(0.2f, 0.8f, 1.0f, 0.8f), 2.0f);
-        ImPlot::PlotLine("Radar Sweep", sw_x, sw_y, 2);
+        ImPlot::PlotLine("##RadarSweep", sw_x, sw_y, 2);
 
-        // Target Blips
-        float blip_az[4] = {42.0f, 135.0f, 220.0f, 310.0f};
-        float blip_r[4]  = {65.0f, 40.0f, 80.0f, 28.0f};
-        const char* blip_id[4] = {"UAL1244", "PACIFIC VOY", "DAL405", "COAST GUARD"};
+        // Dynamically plot all Air Contacts on PPI Scope
+        for (int i = 0; i < telem.air_contact_count; ++i) {
+            const auto& a = telem.air_contacts[i];
+            float dlat = (a.lat - map_center_lat_) * 60.0f;
+            float dlon = (a.lon - map_center_lon_) * 60.0f * std::cos(map_center_lat_ * 0.0174532925f);
+            float bx[1] = {dlon};
+            float by[1] = {dlat};
 
-        for (int i = 0; i < 4; ++i) {
-            float rad = (blip_az[i] - 90.0f) * static_cast<float>(M_PI / 180.0);
-            float bx[1] = {blip_r[i] * std::cos(rad)};
-            float by[1] = {blip_r[i] * std::sin(rad)};
-            ImVec4 b_col = (i == 0 || i == 2) ? ImVec4(0.2f, 0.8f, 1.0f, 1.0f) :
-                           (i == 1) ? ImVec4(0.0f, 0.9f, 0.8f, 1.0f) : ImVec4(0.2f, 1.0f, 0.4f, 1.0f);
-            ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, 6.0f, b_col, 1.5f, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-            ImPlot::PlotScatter(blip_id[i], bx, by, 1);
+            bool is_sel = (selected_target_domain_ == 1 && selected_target_idx_ == i);
+            ImVec4 a_col = is_sel ? ImVec4(1.0f, 1.0f, 0.2f, 1.0f) :
+                           (a.emergency_mode != 0) ? ImVec4(1.0f, 0.2f, 0.2f, 1.0f) :
+                           (a.aircraft_type == 4)  ? ImVec4(0.7f, 0.4f, 1.0f, 1.0f) :
+                                                     ImVec4(0.2f, 0.8f, 1.0f, 1.0f);
+            float marker_sz = is_sel ? 9.0f : 6.0f;
+            char sc_id[32];
+            std::snprintf(sc_id, sizeof(sc_id), "##AirBlip%d", i);
+            ImPlot::SetNextMarkerStyle(ImPlotMarker_Circle, marker_sz, a_col, 1.5f, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            ImPlot::PlotScatter(sc_id, bx, by, 1);
+
+            if (is_sel) {
+                float line_x[2] = {0.0f, dlon};
+                float line_y[2] = {0.0f, dlat};
+                ImPlot::SetNextLineStyle(ImVec4(1.0f, 1.0f, 0.2f, 0.8f), 1.5f);
+                ImPlot::PlotLine("##SelAirBearing", line_x, line_y, 2);
+            }
+        }
+
+        // Dynamically plot all Sea Contacts on PPI Scope
+        for (int i = 0; i < telem.sea_contact_count; ++i) {
+            const auto& s = telem.sea_contacts[i];
+            float dlat = (s.lat - map_center_lat_) * 60.0f;
+            float dlon = (s.lon - map_center_lon_) * 60.0f * std::cos(map_center_lat_ * 0.0174532925f);
+            float bx[1] = {dlon};
+            float by[1] = {dlat};
+
+            bool is_sel = (selected_target_domain_ == 2 && selected_target_idx_ == i);
+            ImVec4 s_col = is_sel ? ImVec4(1.0f, 1.0f, 0.2f, 1.0f) :
+                           (s.vessel_type == 2) ? ImVec4(0.3f, 0.6f, 1.0f, 1.0f) :
+                                                  ImVec4(0.0f, 0.9f, 0.8f, 1.0f);
+            float marker_sz = is_sel ? 9.0f : 6.0f;
+            char sc_id[32];
+            std::snprintf(sc_id, sizeof(sc_id), "##SeaBlip%d", i);
+            ImPlot::SetNextMarkerStyle(ImPlotMarker_Square, marker_sz, s_col, 1.5f, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            ImPlot::PlotScatter(sc_id, bx, by, 1);
+
+            if (is_sel) {
+                float line_x[2] = {0.0f, dlon};
+                float line_y[2] = {0.0f, dlat};
+                ImPlot::SetNextLineStyle(ImVec4(1.0f, 1.0f, 0.2f, 0.8f), 1.5f);
+                ImPlot::PlotLine("##SelSeaBearing", line_x, line_y, 2);
+            }
         }
 
         ImPlot::EndPlot();
@@ -931,18 +1358,20 @@ void OperatorConsoleGui::draw_air_maritime_awareness_view()
 
     ImGui::TextColored(ImVec4(0.0f, 0.9f, 1.0f, 1.0f), "AIRTIME & MARITIME SITUATIONAL AWARENESS");
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "[ ✈️ %d AIR CONTACTS ]", telem.air_contact_count > 0 ? telem.air_contact_count : 4);
+    ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "[ ✈️ %d AIR CONTACTS ]", telem.air_contact_count > 0 ? telem.air_contact_count : 6);
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.8f, 1.0f), "[ ⚓ %d MARITIME VESSELS ]", telem.sea_contact_count > 0 ? telem.sea_contact_count : 3);
+    ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.8f, 1.0f), "[ ⚓ %d MARITIME VESSELS ]", telem.sea_contact_count > 0 ? telem.sea_contact_count : 5);
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.9f, 0.8f, 0.2f, 1.0f), "[ 🗺️ GEODESIC RADAR LOCKED (37.77°N, -122.42°W) ]");
     ImGui::Spacing();
 
     ImVec2 avail = ImGui::GetContentRegionAvail();
-    float upper_h = std::max(200.0f, avail.y * 0.58f);
+    float upper_h = std::max(220.0f, avail.y * 0.58f);
 
     // 3-Column Top Grid: Left = Wave/Waterfall, Center = Tactical Map & USRP Params, Right = Polar PPI Scope
     ImGui::Columns(3, "AirSeaTopCols", true);
-    ImGui::SetColumnWidth(0, avail.x * 0.30f);
-    ImGui::SetColumnWidth(1, avail.x * 0.45f);
+    ImGui::SetColumnWidth(0, avail.x * 0.28f);
+    ImGui::SetColumnWidth(1, avail.x * 0.48f);
 
     // Column 1: IQ Waveform + Waterfall
     ImGui::BeginChild("AirSeaWaveRegion", ImVec2(0, upper_h), true);
@@ -961,8 +1390,8 @@ void OperatorConsoleGui::draw_air_maritime_awareness_view()
 
     // Column 2: Clear Tactical Map & USRP Tuning Controls
     ImGui::BeginChild("AirSeaMapRegion", ImVec2(0, upper_h), true);
-    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "🗺️ Tactical Air & Maritime Surveillance Map");
-    float map_h = upper_h * 0.55f;
+    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "🗺️ Tactical Air & Maritime Surveillance Map (San Francisco Bay & Coast)");
+    float map_h = upper_h * 0.58f;
     render_clear_tactical_map("##TacticalClearMap", telem, -1, map_h);
 
     ImGui::Spacing();
@@ -991,7 +1420,6 @@ void OperatorConsoleGui::draw_air_maritime_awareness_view()
     ImGui::Columns(1);
     ImGui::Spacing();
 
-    // Dummy Apply Changes / Tune USRP Button
     if (ImGui::Button("💾 Apply Changes / Tune USRP", ImVec2(200.0f, 24.0f))) {
         usrp_params_applied_ = true;
         usrp_apply_timer_ = 2.5f;
@@ -1026,13 +1454,81 @@ void OperatorConsoleGui::draw_air_maritime_awareness_view()
     // Column 3: Polar PPI Radar Scope & Fusion KPIs
     ImGui::BeginChild("AirSeaPpiRegion", ImVec2(0, upper_h), true);
     ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.8f, 1.0f), "🧭 Polar PPI Radar Scope (100 nmi)");
-    render_polar_ppi_scope("##PpiScope", telem, -1, upper_h * 0.62f);
+
+    // Dropdown combo bar for radar contact selection
+    const char* current_selection_label = "🎯 Target: [ All Contacts ]";
+    char sel_buf[128];
+    if (selected_target_domain_ == 1 && selected_target_idx_ >= 0 && selected_target_idx_ < telem.air_contact_count) {
+        std::snprintf(sel_buf, sizeof(sel_buf), "🎯 ✈️ %s (%s)", telem.air_contacts[selected_target_idx_].callsign, telem.air_contacts[selected_target_idx_].icao);
+        current_selection_label = sel_buf;
+    } else if (selected_target_domain_ == 2 && selected_target_idx_ >= 0 && selected_target_idx_ < telem.sea_contact_count) {
+        std::snprintf(sel_buf, sizeof(sel_buf), "🎯 ⚓ %s (%s)", telem.sea_contacts[selected_target_idx_].name, telem.sea_contacts[selected_target_idx_].mmsi);
+        current_selection_label = sel_buf;
+    }
+
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##PpiTargetDropdown", current_selection_label)) {
+        bool is_all = (selected_target_domain_ == 0);
+        if (ImGui::Selectable("🎯 [ Show All Contacts ]", is_all)) {
+            selected_target_domain_ = 0;
+            selected_target_idx_ = -1;
+        }
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "── Airborne (ADS-B) ──");
+        for (int i = 0; i < telem.air_contact_count; ++i) {
+            const auto& a = telem.air_contacts[i];
+            char item_lbl[96];
+            std::snprintf(item_lbl, sizeof(item_lbl), "✈️ %s [%s] - %.0fft, %.0fkt", a.callsign, a.icao, a.alt_ft, a.speed_kts);
+            bool is_sel = (selected_target_domain_ == 1 && selected_target_idx_ == i);
+            if (ImGui::Selectable(item_lbl, is_sel)) {
+                selected_target_domain_ = 1;
+                selected_target_idx_ = i;
+            }
+        }
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.8f, 1.0f), "── Maritime (AIS) ──");
+        for (int i = 0; i < telem.sea_contact_count; ++i) {
+            const auto& s = telem.sea_contacts[i];
+            char item_lbl[96];
+            std::snprintf(item_lbl, sizeof(item_lbl), "⚓ %s [%s] - %.1fkt", s.name, s.mmsi, s.speed_kts);
+            bool is_sel = (selected_target_domain_ == 2 && selected_target_idx_ == i);
+            if (ImGui::Selectable(item_lbl, is_sel)) {
+                selected_target_domain_ = 2;
+                selected_target_idx_ = i;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::Spacing();
+
+    render_polar_ppi_scope("##PpiScope", telem, -1, upper_h * 0.52f);
+
+    // Compute Nearest Airborne and Maritime Contacts dynamically
+    float min_air_dist = 999.0f;
+    const char* min_air_id = "NONE";
+    for (int i = 0; i < telem.air_contact_count; ++i) {
+        const auto& a = telem.air_contacts[i];
+        float dlat = (a.lat - map_center_lat_) * 60.0f;
+        float dlon = (a.lon - map_center_lon_) * 60.0f * std::cos(map_center_lat_ * 0.0174532925f);
+        float d = std::sqrt(dlat * dlat + dlon * dlon);
+        if (d < min_air_dist) { min_air_dist = d; min_air_id = a.callsign; }
+    }
+
+    float min_sea_dist = 999.0f;
+    const char* min_sea_id = "NONE";
+    for (int i = 0; i < telem.sea_contact_count; ++i) {
+        const auto& s = telem.sea_contacts[i];
+        float dlat = (s.lat - map_center_lat_) * 60.0f;
+        float dlon = (s.lon - map_center_lon_) * 60.0f * std::cos(map_center_lat_ * 0.0174532925f);
+        float d = std::sqrt(dlat * dlat + dlon * dlon);
+        if (d < min_sea_dist) { min_sea_dist = d; min_sea_id = s.name; }
+    }
 
     ImGui::Spacing();
-    ImGui::Text("Nearest Airborne:  UAL1244 (14.2 nmi)");
-    ImGui::Text("Nearest Maritime:  PACIFIC VOYAGER (6.8 nmi)");
-    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "Emergency Squawk:  CLEAR (7700/7600 NORMAL)");
-    ImGui::Text("Message Rate:      2,410 msgs/min");
+    ImGui::Text("Nearest Airborne:  %s (%.1f nmi)", min_air_id, min_air_dist);
+    ImGui::Text("Nearest Maritime:  %s (%.1f nmi)", min_sea_id, min_sea_dist);
+    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "Emergency Squawk:  CLEAR (7700/7600 MONITORED)");
+    ImGui::Text("Message Rate:      %u msgs/min", telem.sdr_msg_rate_per_min > 0 ? telem.sdr_msg_rate_per_min : 2410);
     ImGui::EndChild();
 
     ImGui::Columns(1);
@@ -1042,62 +1538,142 @@ void OperatorConsoleGui::draw_air_maritime_awareness_view()
     ImGui::BeginChild("AirSeaTableRegion", ImVec2(0, 0), true);
     ImGui::TextColored(ImVec4(0.9f, 0.85f, 0.3f, 1.0f), "📋 Decoded Air & Sea Broadcast Matrix Stream");
     ImGui::SameLine(0, 16.0f);
-    ImGui::SetNextItemWidth(220.0f);
-    ImGui::InputTextWithHint("##matrixSearch", "🔍 Search ICAO / MMSI / Flight...", air_search_query_, sizeof(air_search_query_));
+    ImGui::SetNextItemWidth(240.0f);
+    ImGui::InputTextWithHint("##matrixSearch", "🔍 Filter Callsign, ICAO, MMSI, Name...", air_search_query_, sizeof(air_search_query_));
+    ImGui::SameLine();
+    if (selected_target_domain_ != 0) {
+        if (ImGui::Button("❌ Clear Target Selection")) {
+            selected_target_domain_ = 0;
+            selected_target_idx_ = -1;
+        }
+    }
 
-    if (ImGui::BeginTable("MatrixStreamTable", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY)) {
-        ImGui::TableSetupColumn("Domain", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+    if (ImGui::BeginTable("MatrixStreamTable", 9, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY)) {
+        ImGui::TableSetupColumn("Domain", ImGuiTableColumnFlags_WidthFixed, 65.0f);
         ImGui::TableSetupColumn("ID (ICAO/MMSI)", ImGuiTableColumnFlags_WidthFixed, 100.0f);
         ImGui::TableSetupColumn("Callsign / Vessel", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Coordinates", ImGuiTableColumnFlags_WidthFixed, 150.0f);
-        ImGui::TableSetupColumn("Alt / Draft", ImGuiTableColumnFlags_WidthFixed, 85.0f);
-        ImGui::TableSetupColumn("Speed", ImGuiTableColumnFlags_WidthFixed, 65.0f);
-        ImGui::TableSetupColumn("Heading", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("Squawk / Status", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+        ImGui::TableSetupColumn("Type / Classification", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Coordinates", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Alt / Draft", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Speed / Mach", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Heading", ImGuiTableColumnFlags_WidthFixed, 65.0f);
+        ImGui::TableSetupColumn("Squawk / Status", ImGuiTableColumnFlags_WidthFixed, 140.0f);
         ImGui::TableHeadersRow();
 
-        // Air Contacts
-        for (int i = 0; i < (telem.air_contact_count > 0 ? telem.air_contact_count : 4); ++i) {
+        auto matches_filter = [&](const char* str) -> bool {
+            if (air_search_query_[0] == '\0') return true;
+            if (!str) return false;
+            std::string q = air_search_query_;
+            std::string s = str;
+            for (auto& c : q) c = std::tolower(c);
+            for (auto& c : s) c = std::tolower(c);
+            return s.find(q) != std::string::npos;
+        };
+
+        // Air Contacts (6 aircraft)
+        for (int i = 0; i < telem.air_contact_count; ++i) {
             const auto& a = telem.air_contacts[i];
+            if (!matches_filter(a.callsign) && !matches_filter(a.icao) && !matches_filter(a.squawk)) {
+                continue;
+            }
+
             ImGui::TableNextRow();
+            bool is_selected = (selected_target_domain_ == 1 && selected_target_idx_ == i);
+            if (is_selected) {
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(56, 189, 248, 40));
+            }
+
             ImGui::TableNextColumn();
             ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "✈️ AIR");
+
             ImGui::TableNextColumn();
             ImGui::Text("%s", a.icao);
+
             ImGui::TableNextColumn();
-            ImGui::Text("%s", a.callsign);
+            if (ImGui::Selectable(a.callsign, is_selected, ImGuiSelectableFlags_SpanAllColumns)) {
+                selected_target_domain_ = 1;
+                selected_target_idx_ = i;
+            }
+
+            ImGui::TableNextColumn();
+            const char* type_str = (a.aircraft_type == 0) ? "Commercial Heavy" :
+                                   (a.aircraft_type == 1) ? "Regional Jet" :
+                                   (a.aircraft_type == 2) ? "General Aviation" :
+                                   (a.aircraft_type == 3) ? "SAR Rotorcraft" :
+                                   (a.aircraft_type == 4) ? "High-Alt UAV" : "Military";
+            ImGui::Text("%s", type_str);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.4f°, %.4f°", a.lat, a.lon);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.0f ft", a.alt_ft);
+
             ImGui::TableNextColumn();
-            ImGui::Text("%.0f kts", a.speed_kts);
+            ImGui::Text("%.0f kt (M%.2f)", a.speed_kts, a.mach);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.0f°", a.heading_deg);
+
             ImGui::TableNextColumn();
-            ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "%s", a.squawk);
+            if (a.emergency_mode != 0) {
+                ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "🚨 %s (ALERT)", a.squawk);
+            } else {
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "%s", a.squawk);
+            }
         }
 
-        // Sea Contacts
-        for (int i = 0; i < (telem.sea_contact_count > 0 ? telem.sea_contact_count : 3); ++i) {
+        // Sea Contacts (5 vessels)
+        for (int i = 0; i < telem.sea_contact_count; ++i) {
             const auto& s = telem.sea_contacts[i];
+            if (!matches_filter(s.name) && !matches_filter(s.mmsi) && !matches_filter(s.nav_status)) {
+                continue;
+            }
+
             ImGui::TableNextRow();
+            bool is_selected = (selected_target_domain_ == 2 && selected_target_idx_ == i);
+            if (is_selected) {
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(6, 182, 212, 40));
+            }
+
             ImGui::TableNextColumn();
             ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.8f, 1.0f), "⚓ SEA");
+
             ImGui::TableNextColumn();
             ImGui::Text("%s", s.mmsi);
+
             ImGui::TableNextColumn();
-            ImGui::Text("%s", s.name);
+            if (ImGui::Selectable(s.name, is_selected, ImGuiSelectableFlags_SpanAllColumns)) {
+                selected_target_domain_ = 2;
+                selected_target_idx_ = i;
+            }
+
+            ImGui::TableNextColumn();
+            const char* vtype_str = (s.vessel_type == 0) ? "Container / Cargo" :
+                                    (s.vessel_type == 1) ? "Crude / LNG Tanker" :
+                                    (s.vessel_type == 2) ? "Coast Guard Cutter" :
+                                    (s.vessel_type == 3) ? "Harbor Tug / Pilot" :
+                                    (s.vessel_type == 4) ? "Passenger Ferry" : "Fishing Trawler";
+            ImGui::Text("%s", vtype_str);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.4f°, %.4f°", s.lat, s.lon);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.1f m", s.draft_m);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.1f kts", s.speed_kts);
+
             ImGui::TableNextColumn();
             ImGui::Text("%.0f°", s.heading_deg);
+
             ImGui::TableNextColumn();
-            ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "%s", s.nav_status);
+            if (s.vessel_type == 2) {
+                ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "%s", s.nav_status);
+            } else {
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "%s", s.nav_status);
+            }
         }
 
         ImGui::EndTable();

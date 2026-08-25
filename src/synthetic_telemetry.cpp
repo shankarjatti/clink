@@ -41,106 +41,323 @@ ThreatScenario SyntheticTelemetryEngine::scenario() const
 
 void SyntheticTelemetryEngine::init_contacts()
 {
-    state_.air_contact_count = 4;
-    // 1. UAL1244
-    std::snprintf(state_.air_contacts[0].callsign, sizeof(state_.air_contacts[0].callsign), "UAL1244");
-    std::snprintf(state_.air_contacts[0].icao, sizeof(state_.air_contacts[0].icao), "A4B291");
-    state_.air_contacts[0].lat = 37.8912f;
-    state_.air_contacts[0].lon = -122.1402f;
-    state_.air_contacts[0].alt_ft = 34000.0f;
-    state_.air_contacts[0].speed_kts = 460.0f;
-    state_.air_contacts[0].heading_deg = 110.0f;
-    std::snprintf(state_.air_contacts[0].squawk, sizeof(state_.air_contacts[0].squawk), "SQK 4321");
-    state_.air_contacts[0].rssi_dbm = -68.0f;
-    state_.air_contacts[0].msg_count = 1420;
-    state_.air_contacts[0].vx = 1.2f;
-    state_.air_contacts[0].vy = -0.4f;
+    state_.air_contact_count = 6;
 
-    // 2. SWA812
-    std::snprintf(state_.air_contacts[1].callsign, sizeof(state_.air_contacts[1].callsign), "SWA812");
-    std::snprintf(state_.air_contacts[1].icao, sizeof(state_.air_contacts[1].icao), "A1C802");
-    state_.air_contacts[1].lat = 37.6190f;
-    state_.air_contacts[1].lon = -122.3748f;
-    state_.air_contacts[1].alt_ft = 12400.0f;
-    state_.air_contacts[1].speed_kts = 280.0f;
-    state_.air_contacts[1].heading_deg = 225.0f;
-    std::snprintf(state_.air_contacts[1].squawk, sizeof(state_.air_contacts[1].squawk), "SQK 1200");
-    state_.air_contacts[1].rssi_dbm = -58.0f;
-    state_.air_contacts[1].msg_count = 2110;
-    state_.air_contacts[1].vx = 0.8f;
-    state_.air_contacts[1].vy = 0.6f;
+    // 1. UAL1244 (Commercial Heavy Jet - Boeing 777-300ER)
+    {
+        auto& a = state_.air_contacts[0];
+        std::snprintf(a.callsign, sizeof(a.callsign), "UAL1244");
+        std::snprintf(a.icao, sizeof(a.icao), "A4B291");
+        a.lat = 37.8912f;
+        a.lon = -122.1402f;
+        a.alt_ft = 34000.0f;
+        a.speed_kts = 460.0f;
+        a.heading_deg = 110.0f;
+        std::snprintf(a.squawk, sizeof(a.squawk), "SQK 4321");
+        a.rssi_dbm = -68.0f;
+        a.msg_count = 1420;
+        a.vx = 1.2f;
+        a.vy = -0.4f;
+        a.aircraft_type = 0; // Heavy Jet
+        a.emergency_mode = 0;
+        a.vertical_rate_fpm = 0.0f;
+        a.mach = 0.84f;
+        std::snprintf(a.origin, sizeof(a.origin), "KSFO");
+        std::snprintf(a.destination, sizeof(a.destination), "KJFK");
+        a.trail_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            a.trail_lat[k] = a.lat + k * 0.010f;
+            a.trail_lon[k] = a.lon - k * 0.025f;
+        }
+    }
 
-    // 3. DAL405
-    std::snprintf(state_.air_contacts[2].callsign, sizeof(state_.air_contacts[2].callsign), "DAL405");
-    std::snprintf(state_.air_contacts[2].icao, sizeof(state_.air_contacts[2].icao), "A890F3");
-    state_.air_contacts[2].lat = 38.0120f;
-    state_.air_contacts[2].lon = -122.6500f;
-    state_.air_contacts[2].alt_ft = 28500.0f;
-    state_.air_contacts[2].speed_kts = 420.0f;
-    state_.air_contacts[2].heading_deg = 280.0f;
-    std::snprintf(state_.air_contacts[2].squawk, sizeof(state_.air_contacts[2].squawk), "SQK 5514");
-    state_.air_contacts[2].rssi_dbm = -71.0f;
-    state_.air_contacts[2].msg_count = 950;
-    state_.air_contacts[2].vx = -1.1f;
-    state_.air_contacts[2].vy = 0.3f;
+    // 2. SWA812 (Regional / Narrow-body Jet - Boeing 737-800)
+    {
+        auto& a = state_.air_contacts[1];
+        std::snprintf(a.callsign, sizeof(a.callsign), "SWA812");
+        std::snprintf(a.icao, sizeof(a.icao), "A1C802");
+        a.lat = 37.6190f;
+        a.lon = -122.3748f;
+        a.alt_ft = 8400.0f;
+        a.speed_kts = 240.0f;
+        a.heading_deg = 280.0f;
+        std::snprintf(a.squawk, sizeof(a.squawk), "SQK 1200");
+        a.rssi_dbm = -54.0f;
+        a.msg_count = 2110;
+        a.vx = -0.9f;
+        a.vy = 0.2f;
+        a.aircraft_type = 1; // Regional Jet
+        a.emergency_mode = 0;
+        a.vertical_rate_fpm = -1200.0f;
+        a.mach = 0.52f;
+        std::snprintf(a.origin, sizeof(a.origin), "KLAS");
+        std::snprintf(a.destination, sizeof(a.destination), "KSFO");
+        a.trail_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            a.trail_lat[k] = a.lat - k * 0.005f;
+            a.trail_lon[k] = a.lon + k * 0.020f;
+        }
+    }
 
-    // 4. UAV-GUARD
-    std::snprintf(state_.air_contacts[3].callsign, sizeof(state_.air_contacts[3].callsign), "UAV-GUARD");
-    std::snprintf(state_.air_contacts[3].icao, sizeof(state_.air_contacts[3].icao), "A9FF01");
-    state_.air_contacts[3].lat = 37.7740f;
-    state_.air_contacts[3].lon = -122.4200f;
-    state_.air_contacts[3].alt_ft = 1500.0f;
-    state_.air_contacts[3].speed_kts = 65.0f;
-    state_.air_contacts[3].heading_deg = 340.0f;
-    std::snprintf(state_.air_contacts[3].squawk, sizeof(state_.air_contacts[3].squawk), "SQK 0024");
-    state_.air_contacts[3].rssi_dbm = -48.0f;
-    state_.air_contacts[3].msg_count = 4890;
-    state_.air_contacts[3].vx = 0.3f;
-    state_.air_contacts[3].vy = -0.2f;
+    // 3. DAL405 (Commercial Airliner - Airbus A321)
+    {
+        auto& a = state_.air_contacts[2];
+        std::snprintf(a.callsign, sizeof(a.callsign), "DAL405");
+        std::snprintf(a.icao, sizeof(a.icao), "A890F3");
+        a.lat = 37.9520f;
+        a.lon = -122.5800f;
+        a.alt_ft = 22500.0f;
+        a.speed_kts = 380.0f;
+        a.heading_deg = 320.0f;
+        std::snprintf(a.squawk, sizeof(a.squawk), "SQK 5514");
+        a.rssi_dbm = -64.0f;
+        a.msg_count = 950;
+        a.vx = -0.8f;
+        a.vy = 0.9f;
+        a.aircraft_type = 0; // Heavy Jet
+        a.emergency_mode = 0;
+        a.vertical_rate_fpm = +2100.0f;
+        a.mach = 0.74f;
+        std::snprintf(a.origin, sizeof(a.origin), "KSFO");
+        std::snprintf(a.destination, sizeof(a.destination), "KSEA");
+        a.trail_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            a.trail_lat[k] = a.lat - k * 0.015f;
+            a.trail_lon[k] = a.lon + k * 0.015f;
+        }
+    }
 
-    // Maritime Contacts
-    state_.sea_contact_count = 3;
-    // 1. PACIFIC VOYAGER
-    std::snprintf(state_.sea_contacts[0].name, sizeof(state_.sea_contacts[0].name), "PACIFIC VOYAGER");
-    std::snprintf(state_.sea_contacts[0].mmsi, sizeof(state_.sea_contacts[0].mmsi), "368124000");
-    state_.sea_contacts[0].lat = 37.6401f;
-    state_.sea_contacts[0].lon = -122.5890f;
-    state_.sea_contacts[0].draft_m = 12.4f;
-    state_.sea_contacts[0].speed_kts = 18.2f;
-    state_.sea_contacts[0].heading_deg = 130.0f;
-    std::snprintf(state_.sea_contacts[0].nav_status, sizeof(state_.sea_contacts[0].nav_status), "Underway (Motor)");
-    state_.sea_contacts[0].rssi_dbm = -74.0f;
-    state_.sea_contacts[0].msg_count = 380;
-    state_.sea_contacts[0].vx = 0.2f;
-    state_.sea_contacts[0].vy = 0.1f;
+    // 4. UAV-GUARD (High-Altitude Surveillance Drone)
+    {
+        auto& a = state_.air_contacts[3];
+        std::snprintf(a.callsign, sizeof(a.callsign), "UAV-GUARD");
+        std::snprintf(a.icao, sizeof(a.icao), "A9FF01");
+        a.lat = 37.7650f;
+        a.lon = -122.4150f;
+        a.alt_ft = 15000.0f;
+        a.speed_kts = 85.0f;
+        a.heading_deg = 45.0f;
+        std::snprintf(a.squawk, sizeof(a.squawk), "SQK 0024");
+        a.rssi_dbm = -48.0f;
+        a.msg_count = 4890;
+        a.vx = 0.4f;
+        a.vy = 0.4f;
+        a.aircraft_type = 4; // High-Altitude UAV
+        a.emergency_mode = 0;
+        a.vertical_rate_fpm = 0.0f;
+        a.mach = 0.18f;
+        std::snprintf(a.origin, sizeof(a.origin), "KNUQ");
+        std::snprintf(a.destination, sizeof(a.destination), "ORBIT");
+        a.trail_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            a.trail_lat[k] = a.lat - k * 0.006f;
+            a.trail_lon[k] = a.lon - k * 0.006f;
+        }
+    }
 
-    // 2. EVER GALAXY
-    std::snprintf(state_.sea_contacts[1].name, sizeof(state_.sea_contacts[1].name), "EVER GALAXY");
-    std::snprintf(state_.sea_contacts[1].mmsi, sizeof(state_.sea_contacts[1].mmsi), "413290000");
-    state_.sea_contacts[1].lat = 37.5200f;
-    state_.sea_contacts[1].lon = -122.7100f;
-    state_.sea_contacts[1].draft_m = 14.8f;
-    state_.sea_contacts[1].speed_kts = 15.4f;
-    state_.sea_contacts[1].heading_deg = 250.0f;
-    std::snprintf(state_.sea_contacts[1].nav_status, sizeof(state_.sea_contacts[1].nav_status), "Underway");
-    state_.sea_contacts[1].rssi_dbm = -82.0f;
-    state_.sea_contacts[1].msg_count = 194;
-    state_.sea_contacts[1].vx = -0.15f;
-    state_.sea_contacts[1].vy = -0.05f;
+    // 5. USCG-6012 (MH-60T Jayhawk SAR Helicopter)
+    {
+        auto& a = state_.air_contacts[4];
+        std::snprintf(a.callsign, sizeof(a.callsign), "USCG-6012");
+        std::snprintf(a.icao, sizeof(a.icao), "A66B99");
+        a.lat = 37.8200f;
+        a.lon = -122.4780f;
+        a.alt_ft = 800.0f;
+        a.speed_kts = 120.0f;
+        a.heading_deg = 210.0f;
+        std::snprintf(a.squawk, sizeof(a.squawk), "SQK 7700"); // SAR Emergency squawk
+        a.rssi_dbm = -42.0f;
+        a.msg_count = 3200;
+        a.vx = -0.4f;
+        a.vy = -0.7f;
+        a.aircraft_type = 3; // SAR Rotorcraft
+        a.emergency_mode = 3; // SQK 7700
+        a.vertical_rate_fpm = -50.0f;
+        a.mach = 0.16f;
+        std::snprintf(a.origin, sizeof(a.origin), "KSFO_CG");
+        std::snprintf(a.destination, sizeof(a.destination), "RESCUE");
+        a.trail_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            a.trail_lat[k] = a.lat + k * 0.006f;
+            a.trail_lon[k] = a.lon + k * 0.004f;
+        }
+    }
 
-    // 3. USCG CUTTER 752
-    std::snprintf(state_.sea_contacts[2].name, sizeof(state_.sea_contacts[2].name), "USCG CUTTER 752");
-    std::snprintf(state_.sea_contacts[2].mmsi, sizeof(state_.sea_contacts[2].mmsi), "369970000");
-    state_.sea_contacts[2].lat = 37.7900f;
-    state_.sea_contacts[2].lon = -122.4800f;
-    state_.sea_contacts[2].draft_m = 4.2f;
-    state_.sea_contacts[2].speed_kts = 26.0f;
-    state_.sea_contacts[2].heading_deg = 45.0f;
-    std::snprintf(state_.sea_contacts[2].nav_status, sizeof(state_.sea_contacts[2].nav_status), "Restricted Ops");
-    state_.sea_contacts[2].rssi_dbm = -52.0f;
-    state_.sea_contacts[2].msg_count = 840;
-    state_.sea_contacts[2].vx = 0.4f;
-    state_.sea_contacts[2].vy = -0.3f;
+    // 6. N4285P (Cessna 172 Skyhawk - General Aviation)
+    {
+        auto& a = state_.air_contacts[5];
+        std::snprintf(a.callsign, sizeof(a.callsign), "N4285P");
+        std::snprintf(a.icao, sizeof(a.icao), "A522CD");
+        a.lat = 37.7100f;
+        a.lon = -122.2500f;
+        a.alt_ft = 3500.0f;
+        a.speed_kts = 115.0f;
+        a.heading_deg = 15.0f;
+        std::snprintf(a.squawk, sizeof(a.squawk), "SQK 1200");
+        a.rssi_dbm = -50.0f;
+        a.msg_count = 1120;
+        a.vx = 0.1f;
+        a.vy = 0.8f;
+        a.aircraft_type = 2; // General Aviation
+        a.emergency_mode = 0;
+        a.vertical_rate_fpm = +300.0f;
+        a.mach = 0.15f;
+        std::snprintf(a.origin, sizeof(a.origin), "KOAK");
+        std::snprintf(a.destination, sizeof(a.destination), "KCCR");
+        a.trail_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            a.trail_lat[k] = a.lat - k * 0.007f;
+            a.trail_lon[k] = a.lon - k * 0.002f;
+        }
+    }
+
+    // Maritime Contacts (5 Vessels)
+    state_.sea_contact_count = 5;
+
+    // 1. PACIFIC VOYAGER (Container Vessel - 366m)
+    {
+        auto& s = state_.sea_contacts[0];
+        std::snprintf(s.name, sizeof(s.name), "PACIFIC VOYAGER");
+        std::snprintf(s.mmsi, sizeof(s.mmsi), "368124000");
+        s.lat = 37.8150f;
+        s.lon = -122.4200f;
+        s.draft_m = 13.8f;
+        s.speed_kts = 16.4f;
+        s.heading_deg = 70.0f;
+        std::snprintf(s.nav_status, sizeof(s.nav_status), "Underway Engine");
+        s.rssi_dbm = -56.0f;
+        s.msg_count = 540;
+        s.vx = 0.35f;
+        s.vy = 0.12f;
+        s.vessel_type = 0; // Container / Cargo
+        s.nav_status_code = 0;
+        s.length_m = 366.0f;
+        s.beam_m = 51.0f;
+        s.rate_of_turn_dpm = 0.5f;
+        std::snprintf(s.destination, sizeof(s.destination), "PORT OF OAKLAND");
+        std::snprintf(s.eta, sizeof(s.eta), "18:45 UTC");
+        s.wake_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            s.wake_lat[k] = s.lat - k * 0.002f;
+            s.wake_lon[k] = s.lon - k * 0.005f;
+        }
+    }
+
+    // 2. EVER GALAXY (Ultra-Large Container Ship - 400m)
+    {
+        auto& s = state_.sea_contacts[1];
+        std::snprintf(s.name, sizeof(s.name), "EVER GALAXY");
+        std::snprintf(s.mmsi, sizeof(s.mmsi), "413290000");
+        s.lat = 37.7800f;
+        s.lon = -122.5400f;
+        s.draft_m = 15.5f;
+        s.speed_kts = 18.8f;
+        s.heading_deg = 62.0f;
+        std::snprintf(s.nav_status, sizeof(s.nav_status), "Underway Engine");
+        s.rssi_dbm = -72.0f;
+        s.msg_count = 320;
+        s.vx = 0.40f;
+        s.vy = 0.20f;
+        s.vessel_type = 0; // Container / Cargo
+        s.nav_status_code = 0;
+        s.length_m = 400.0f;
+        s.beam_m = 59.0f;
+        s.rate_of_turn_dpm = 0.0f;
+        std::snprintf(s.destination, sizeof(s.destination), "PORT OF OAKLAND");
+        std::snprintf(s.eta, sizeof(s.eta), "19:15 UTC");
+        s.wake_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            s.wake_lat[k] = s.lat - k * 0.002f;
+            s.wake_lon[k] = s.lon - k * 0.006f;
+        }
+    }
+
+    // 3. USCG CUTTER 752 (National Security Cutter - 127m)
+    {
+        auto& s = state_.sea_contacts[2];
+        std::snprintf(s.name, sizeof(s.name), "USCG CUTTER 752");
+        std::snprintf(s.mmsi, sizeof(s.mmsi), "369970000");
+        s.lat = 37.8450f;
+        s.lon = -122.4600f;
+        s.draft_m = 6.8f;
+        s.speed_kts = 24.5f;
+        s.heading_deg = 195.0f;
+        std::snprintf(s.nav_status, sizeof(s.nav_status), "Restricted Ops");
+        s.rssi_dbm = -48.0f;
+        s.msg_count = 1120;
+        s.vx = -0.15f;
+        s.vy = -0.55f;
+        s.vessel_type = 2; // Coast Guard / Naval
+        s.nav_status_code = 2; // Restricted Maneuverability
+        s.length_m = 127.0f;
+        s.beam_m = 16.0f;
+        s.rate_of_turn_dpm = -1.2f;
+        std::snprintf(s.destination, sizeof(s.destination), "ALAMEDA BASE");
+        std::snprintf(s.eta, sizeof(s.eta), "17:30 UTC");
+        s.wake_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            s.wake_lat[k] = s.lat + k * 0.004f;
+            s.wake_lon[k] = s.lon + k * 0.001f;
+        }
+    }
+
+    // 4. GOLDEN GATE FERRY (High-Speed Catamaran - 45m)
+    {
+        auto& s = state_.sea_contacts[3];
+        std::snprintf(s.name, sizeof(s.name), "GOLDEN GATE FERRY");
+        std::snprintf(s.mmsi, sizeof(s.mmsi), "367112000");
+        s.lat = 37.8100f;
+        s.lon = -122.4050f;
+        s.draft_m = 2.4f;
+        s.speed_kts = 34.0f;
+        s.heading_deg = 340.0f;
+        std::snprintf(s.nav_status, sizeof(s.nav_status), "Underway (Transit)");
+        s.rssi_dbm = -50.0f;
+        s.msg_count = 940;
+        s.vx = -0.2f;
+        s.vy = 0.6f;
+        s.vessel_type = 4; // Passenger Ferry
+        s.nav_status_code = 0;
+        s.length_m = 45.0f;
+        s.beam_m = 12.0f;
+        s.rate_of_turn_dpm = 0.0f;
+        std::snprintf(s.destination, sizeof(s.destination), "LARKSPUR TERMINAL");
+        std::snprintf(s.eta, sizeof(s.eta), "17:50 UTC");
+        s.wake_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            s.wake_lat[k] = s.lat - k * 0.004f;
+            s.wake_lon[k] = s.lon + k * 0.001f;
+        }
+    }
+
+    // 5. SF PILOT #1 (Harbor Pilot Workboat - 22m)
+    {
+        auto& s = state_.sea_contacts[4];
+        std::snprintf(s.name, sizeof(s.name), "SF PILOT #1");
+        std::snprintf(s.mmsi, sizeof(s.mmsi), "366890000");
+        s.lat = 37.7950f;
+        s.lon = -122.4900f;
+        s.draft_m = 3.1f;
+        s.speed_kts = 11.5f;
+        s.heading_deg = 245.0f;
+        std::snprintf(s.nav_status, sizeof(s.nav_status), "Underway (Pilot)");
+        s.rssi_dbm = -54.0f;
+        s.msg_count = 720;
+        s.vx = -0.3f;
+        s.vy = -0.15f;
+        s.vessel_type = 3; // Tugboat / Pilot
+        s.nav_status_code = 0;
+        s.length_m = 22.0f;
+        s.beam_m = 7.0f;
+        s.rate_of_turn_dpm = 0.0f;
+        std::snprintf(s.destination, sizeof(s.destination), "PILOT STATION SF");
+        std::snprintf(s.eta, sizeof(s.eta), "STANDBY");
+        s.wake_count = 6;
+        for (int k = 0; k < 6; ++k) {
+            s.wake_lat[k] = s.lat + k * 0.001f;
+            s.wake_lon[k] = s.lon + k * 0.003f;
+        }
+    }
 
     state_.usrp_primary_freq_mhz = 1090.000;
     state_.usrp_secondary_freq_mhz = 162.000;
@@ -205,11 +422,74 @@ void SyntheticTelemetryEngine::update(double dt_sec, ExtendedDomainTelemetry& ou
     ++tick_count_;
 
     // 1. Advance Kinematics for Air & Maritime Contacts
+    double sim_dt = dt_sec > 0.0 ? dt_sec : 0.016;
+
+    // Air contacts (ADS-B Mode-S)
     for (int i = 0; i < state_.air_contact_count; ++i) {
-        state_.air_contacts[i].msg_count += static_cast<uint32_t>(rand_f(1.0f, 4.0f));
+        auto& a = state_.air_contacts[i];
+        a.msg_count += static_cast<uint32_t>(rand_f(1.0f, 4.0f));
+
+        // Speed in knots to deg/sec:
+        float speed_deg_s = (a.speed_kts / 216000.0f) * 3.0f; // scaled for responsive tactical display
+        float rad = (90.0f - a.heading_deg) * (static_cast<float>(M_PI) / 180.0f);
+        float dlon = speed_deg_s * std::cos(rad) * static_cast<float>(sim_dt);
+        float dlat = speed_deg_s * std::sin(rad) * static_cast<float>(sim_dt);
+
+        a.lat += dlat;
+        a.lon += dlon;
+
+        // Gentle turnaround when approaching boundary of tactical region
+        if (a.lat > 38.18f && std::sin(rad) > 0) { a.heading_deg = 180.0f + rand_f(-35.0f, 35.0f); }
+        else if (a.lat < 37.45f && std::sin(rad) < 0) { a.heading_deg = 0.0f + rand_f(-35.0f, 35.0f); }
+        if (a.lon > -121.95f && std::cos(rad) > 0) { a.heading_deg = 270.0f + rand_f(-35.0f, 35.0f); }
+        else if (a.lon < -122.85f && std::cos(rad) < 0) { a.heading_deg = 90.0f + rand_f(-35.0f, 35.0f); }
+
+        if (a.heading_deg < 0.0f) a.heading_deg += 360.0f;
+        if (a.heading_deg >= 360.0f) a.heading_deg -= 360.0f;
+
+        // Shift breadcrumb history every 15 ticks
+        if (tick_count_ % 15 == 0) {
+            for (int k = 7; k > 0; --k) {
+                a.trail_lat[k] = a.trail_lat[k - 1];
+                a.trail_lon[k] = a.trail_lon[k - 1];
+            }
+            a.trail_lat[0] = a.lat;
+            a.trail_lon[0] = a.lon;
+            if (a.trail_count < 8) a.trail_count++;
+        }
     }
+
+    // Maritime contacts (AIS Class A/B)
     for (int i = 0; i < state_.sea_contact_count; ++i) {
-        state_.sea_contacts[i].msg_count += static_cast<uint32_t>(rand_f(0.5f, 2.0f));
+        auto& s = state_.sea_contacts[i];
+        s.msg_count += static_cast<uint32_t>(rand_f(0.5f, 2.0f));
+
+        float speed_deg_s = (s.speed_kts / 216000.0f) * 2.2f;
+        float rad = (90.0f - s.heading_deg) * (static_cast<float>(M_PI) / 180.0f);
+        float dlon = speed_deg_s * std::cos(rad) * static_cast<float>(sim_dt);
+        float dlat = speed_deg_s * std::sin(rad) * static_cast<float>(sim_dt);
+
+        s.lat += dlat;
+        s.lon += dlon;
+
+        if (s.lat > 37.96f && std::sin(rad) > 0) { s.heading_deg = 180.0f + rand_f(-25.0f, 25.0f); }
+        else if (s.lat < 37.60f && std::sin(rad) < 0) { s.heading_deg = 0.0f + rand_f(-25.0f, 25.0f); }
+        if (s.lon > -122.30f && std::cos(rad) > 0) { s.heading_deg = 250.0f + rand_f(-25.0f, 25.0f); }
+        else if (s.lon < -122.75f && std::cos(rad) < 0) { s.heading_deg = 70.0f + rand_f(-25.0f, 25.0f); }
+
+        if (s.heading_deg < 0.0f) s.heading_deg += 360.0f;
+        if (s.heading_deg >= 360.0f) s.heading_deg -= 360.0f;
+
+        // Shift wake history every 20 ticks
+        if (tick_count_ % 20 == 0) {
+            for (int k = 7; k > 0; --k) {
+                s.wake_lat[k] = s.wake_lat[k - 1];
+                s.wake_lon[k] = s.wake_lon[k - 1];
+            }
+            s.wake_lat[0] = s.lat;
+            s.wake_lon[0] = s.lon;
+            if (s.wake_count < 8) s.wake_count++;
+        }
     }
 
     // 2. Update GNSS & Threat Metrics based on active Scenario

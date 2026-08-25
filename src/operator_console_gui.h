@@ -154,6 +154,25 @@ private:
     char air_search_query_[64] = "";
     char topic_search_query_[64] = "";
 
+    // Tactical Map Geographic Viewport & Layer Controls (Tab 6)
+    float map_center_lat_{37.7749f};    // SF Bay Base Station Latitude
+    float map_center_lon_{-122.4194f};  // SF Bay Base Station Longitude
+    float map_zoom_nmi_{28.0f};         // Viewport radius in nautical miles
+    float map_pan_lat_{0.0f};
+    float map_pan_lon_{0.0f};
+    bool show_air_layer_{true};
+    bool show_sea_layer_{true};
+    bool show_channels_layer_{true};
+    bool show_buoys_layer_{true};
+    bool show_airspace_layer_{true};
+    bool show_trails_layer_{true};
+    bool show_vectors_layer_{true};
+    bool show_range_rings_{true};
+
+    // Target Selection & Inspection HUD
+    int selected_target_domain_{0}; // 0=None, 1=Air, 2=Sea
+    int selected_target_idx_{-1};
+
     // Audio Player & Visualizer
     AudioPlayer audio_player_;
     float audio_vis_buf_[128];

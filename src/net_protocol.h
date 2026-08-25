@@ -54,6 +54,17 @@ struct AirContact
     uint32_t msg_count;
     float vx;
     float vy;
+
+    // Extended flight dynamics and visual classification
+    uint8_t aircraft_type;       // 0=Heavy Commercial Jet, 1=Regional Jet, 2=General Aviation, 3=SAR Rotorcraft/Helo, 4=High-Altitude UAV, 5=Military
+    uint8_t emergency_mode;      // 0=NORMAL, 1=SQK 7500, 2=SQK 7600, 3=SQK 7700
+    float vertical_rate_fpm;     // Climb/Descent rate in ft/min (e.g. +1800 fpm)
+    float mach;                  // Flight Mach number (e.g. 0.82)
+    char origin[8];              // Origin ICAO/IATA code (e.g. "KSFO")
+    char destination[8];         // Dest ICAO/IATA code (e.g. "KLAX")
+    float trail_lat[8];          // Breadcrumb history latitude
+    float trail_lon[8];          // Breadcrumb history longitude
+    uint8_t trail_count;         // Valid points in history
 };
 
 struct SeaContact
@@ -70,6 +81,18 @@ struct SeaContact
     uint32_t msg_count;
     float vx;
     float vy;
+
+    // Extended maritime dimensions and visual classification
+    uint8_t vessel_type;         // 0=Container/Cargo, 1=Oil/LNG Tanker, 2=Coast Guard/Naval, 3=Tugboat/Pilot, 4=Passenger Ferry, 5=Fishing
+    uint8_t nav_status_code;     // 0=Underway Engine, 1=At Anchor, 2=Restricted Maneuverability, 3=Moored
+    float length_m;              // Vessel length in meters (e.g. 366.0m)
+    float beam_m;                // Vessel beam width in meters (e.g. 51.0m)
+    float rate_of_turn_dpm;      // Rate of turn in deg/min
+    char destination[32];        // Destination port name (e.g. "PORT OF OAKLAND")
+    char eta[16];                // ETA string (e.g. "18:30 UTC")
+    float wake_lat[8];           // Hydrodynamic wake trail latitude
+    float wake_lon[8];           // Hydrodynamic wake trail longitude
+    uint8_t wake_count;          // Valid points in wake
 };
 
 struct GnssSatTelemetry
@@ -148,7 +171,7 @@ struct ExtendedDomainTelemetry
     uint8_t air_contact_count;
     AirContact air_contacts[6];
     uint8_t sea_contact_count;
-    SeaContact sea_contacts[4];
+    SeaContact sea_contacts[6];
     double usrp_primary_freq_mhz;   // 1090.000
     double usrp_secondary_freq_mhz; // 162.000
     float usrp_rx_gain_db;          // 54.0

@@ -15,3 +15,4 @@ third_party/
 .vscode/
 .idea/
 .DS_Store
+imgui.ini
