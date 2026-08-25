@@ -7,6 +7,9 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
+
+#include "net_protocol.h"
 
 struct IMonitorStatus
 {
@@ -21,6 +24,7 @@ struct IMonitorStatus
     virtual double latency_ms() const { return 0.0; }
     virtual double jitter_ms() const { return 0.0; }
     virtual double frame_rate_fps() const { return 0.0; }
+    virtual bool get_domain_telemetry(ExtendedDomainTelemetry& out) const { (void)out; return false; }
 };
 
 class NetStatusProvider : public IMonitorStatus
@@ -37,6 +41,14 @@ public:
     double jitter_ms() const override { return jitter_ms_.load(); }
     double frame_rate_fps() const override { return frame_rate_fps_.load(); }
 
+    bool get_domain_telemetry(ExtendedDomainTelemetry& out) const override
+    {
+        std::lock_guard<std::mutex> lock(telem_mutex_);
+        if (!has_domain_telemetry_) return false;
+        out = domain_telemetry_;
+        return true;
+    }
+
     void set_freq_hz(double freq) { current_freq_hz_.store(freq); }
     void set_bursting(bool b) { is_bursting_.store(b); }
     void set_locked(bool l) { last_retune_locked_.store(l); }
@@ -47,6 +59,13 @@ public:
     void set_latency_ms(double l) { latency_ms_.store(l); }
     void set_jitter_ms(double j) { jitter_ms_.store(j); }
     void set_frame_rate_fps(double fps) { frame_rate_fps_.store(fps); }
+
+    void set_domain_telemetry(const ExtendedDomainTelemetry& telem)
+    {
+        std::lock_guard<std::mutex> lock(telem_mutex_);
+        domain_telemetry_ = telem;
+        has_domain_telemetry_ = true;
+    }
 
 private:
     std::atomic<double> current_freq_hz_{2.4e9};
@@ -59,4 +78,8 @@ private:
     std::atomic<double> latency_ms_{0.0};
     std::atomic<double> jitter_ms_{0.0};
     std::atomic<double> frame_rate_fps_{0.0};
+
+    mutable std::mutex telem_mutex_;
+    ExtendedDomainTelemetry domain_telemetry_{};
+    bool has_domain_telemetry_{false};
 };

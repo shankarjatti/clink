@@ -53,6 +53,7 @@ int main(int argc, char* argv[])
         std::vector<int16_t> rx_sc16;
         std::vector<float> rx_fft;
         std::vector<std::complex<float>> rx_scaled;
+        ExtendedDomainTelemetry telem_packet;
 
         bool prev_bursting = false;
         double ema_latency_ms = 0.0;
@@ -62,9 +63,13 @@ int main(int argc, char* argv[])
         uint64_t frame_counter = 0;
 
         while (!stop_flag.load()) {
-            if (!receiver.recv_frame(hdr, rx_sc16, rx_fft)) {
+            if (!receiver.recv_frame(hdr, rx_sc16, rx_fft, &telem_packet)) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
                 continue;
+            }
+
+            if (hdr.telemetry_bytes > 0) {
+                net_status.set_domain_telemetry(telem_packet);
             }
 
             auto now_steady = std::chrono::steady_clock::now();

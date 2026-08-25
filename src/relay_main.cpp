@@ -19,6 +19,7 @@
 #include "net_protocol.h"
 #include "net_streamer.h"
 #include "status_provider.h"
+#include "synthetic_telemetry.h"
 
 int main(int argc, char* argv[])
 {
@@ -49,6 +50,7 @@ int main(int argc, char* argv[])
     constexpr double kSampleRateHz = 2e6;
     NetStatusProvider net_status;
     MultichannelDemux demux;
+    SyntheticTelemetryEngine telem_engine;
 
     IqTcpReceiver receiver(listen_port);
     receiver.start();
@@ -70,19 +72,52 @@ int main(int argc, char* argv[])
         std::vector<int16_t> rx_sc16;
         std::vector<float> rx_fft;
         std::vector<std::complex<float>> rx_scaled;
+        ExtendedDomainTelemetry telem_packet;
 
         bool prev_bursting = false;
         double ema_latency_ms = 0.0;
         double ema_jitter_ms = 0.0;
         auto last_frame_time = std::chrono::steady_clock::now();
         auto last_fps_calc_time = std::chrono::steady_clock::now();
+        auto last_s1_frame_time = std::chrono::steady_clock::now();
+        auto last_standalone_pump_time = std::chrono::steady_clock::now();
         uint64_t frame_counter = 0;
+        std::vector<std::complex<float>> dummy_iq(2000, std::complex<float>(0.0f, 0.0f));
 
         while (!stop_flag.load()) {
             if (!receiver.recv_frame(hdr, rx_sc16, rx_fft)) {
-                std::this_thread::sleep_for(std::chrono::microseconds(500));
+                // If System 1 is not sending or not connected, pump 60Hz telemetry to System 3
+                auto now = std::chrono::steady_clock::now();
+                double elapsed_s1 = std::chrono::duration<double>(now - last_s1_frame_time).count();
+                double elapsed_pump = std::chrono::duration<double, std::milli>(now - last_standalone_pump_time).count();
+
+                if (elapsed_s1 > 0.05 && elapsed_pump >= 16.0) {
+                    last_standalone_pump_time = now;
+                    telem_engine.update(0.016, telem_packet);
+                    net_status.set_domain_telemetry(telem_packet);
+
+                    if (sender && sender->is_connected()) {
+                        uint64_t now_wall_ns = static_cast<uint64_t>(
+                            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::system_clock::now().time_since_epoch()).count());
+                        sender->send_extended_frame(now_wall_ns,
+                                                    2.4e9,
+                                                    false,
+                                                    dummy_iq.data(),
+                                                    dummy_iq.size(),
+                                                    nullptr,
+                                                    0,
+                                                    1.0f,
+                                                    30.0f,
+                                                    40.0f,
+                                                    &telem_packet);
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
             }
+
+            last_s1_frame_time = std::chrono::steady_clock::now();
 
             auto now_steady = std::chrono::steady_clock::now();
             uint64_t now_wall_ns = static_cast<uint64_t>(
@@ -126,6 +161,9 @@ int main(int argc, char* argv[])
                                                            rx_fft.empty() ? nullptr : rx_fft.data(),
                                                            rx_scaled);
 
+            // Update synthetic telemetry engine state (60Hz equivalent)
+            telem_engine.update(0.001, telem_packet);
+
             // Update status metrics
             net_status.set_freq_hz(hdr.center_freq_hz);
             bool is_bursting = (hdr.is_bursting != 0);
@@ -136,18 +174,19 @@ int main(int argc, char* argv[])
             prev_bursting = is_bursting;
             net_status.set_rx_overflow(receiver.dropped_frames());
 
-            // Forward scaled float samples encoded as sc16 + direct FFTs + angles to System 3
+            // Forward scaled float samples encoded as sc16 + direct FFTs + angles + extended domain telemetry to System 3
             if (sender && sender->is_connected()) {
-                sender->send_frame(hdr.timestamp_ns,
-                                   hdr.center_freq_hz,
-                                   is_bursting,
-                                   rx_scaled.data(),
-                                   hdr.sample_count,
-                                   rx_fft.empty() ? nullptr : rx_fft.data(),
-                                   hdr.fft_size,
-                                   multiplier,
-                                   hdr.elevation_deg,
-                                   hdr.azimuth_deg);
+                sender->send_extended_frame(hdr.timestamp_ns,
+                                            hdr.center_freq_hz,
+                                            is_bursting,
+                                            rx_scaled.data(),
+                                            hdr.sample_count,
+                                            rx_fft.empty() ? nullptr : rx_fft.data(),
+                                            hdr.fft_size,
+                                            multiplier,
+                                            hdr.elevation_deg,
+                                            hdr.azimuth_deg,
+                                            &telem_packet);
             }
         }
     });

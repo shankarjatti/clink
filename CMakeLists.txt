@@ -82,6 +82,7 @@ add_executable(usrp_relay_gui
     src/relay_main.cpp
     src/multichannel_demux.cpp
     src/multichannel_gui.cpp
+    src/synthetic_telemetry.cpp
     src/fft_processor.cpp
     src/net_streamer.cpp
     src/gui.cpp
@@ -106,8 +107,10 @@ target_compile_options(usrp_relay_gui PRIVATE -Wall -Wextra -O2)
 add_executable(usrp_sink_gui
     src/sink_main.cpp
     src/operator_console_gui.cpp
+    src/audio_player.cpp
     src/multichannel_demux.cpp
     src/multichannel_gui.cpp
+    src/synthetic_telemetry.cpp
     src/fft_processor.cpp
     src/net_streamer.cpp
     src/gui.cpp
@@ -123,9 +126,11 @@ target_link_libraries(usrp_sink_gui PRIVATE
     imgui
     implot
     fftw3f
+    asound
     Threads::Threads
 )
 
 target_compile_options(usrp_sink_gui PRIVATE -Wall -Wextra -O2)
+
 
 

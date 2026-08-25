@@ -20,11 +20,14 @@
 
 // Magic 32-bit identifier for frame alignment ('IQS3' = 0x49515333)
 constexpr uint32_t kIqFrameMagic = 0x49515333;
+// Extended frame magic containing domain telemetry ('IQEX' = 0x49514558)
+constexpr uint32_t kIqExtendedFrameMagic = 0x49514558;
+constexpr uint32_t kTelemetryMagic = 0x4558544C; // 'EXTL'
 
 #pragma pack(push, 1)
 struct IqFrameHeader
 {
-    uint32_t magic;           // Must be kIqFrameMagic
+    uint32_t magic;           // kIqFrameMagic ('IQS3') or kIqExtendedFrameMagic ('IQEX')
     uint32_t sequence_num;    // Monotonically increasing (0, 1, 2, ...)
     uint64_t timestamp_ns;    // USRP timestamp in nanoseconds
     double   center_freq_hz;  // Active RF carrier frequency (e.g. 2.4e9, 5.1e9, 5.8e9)
@@ -34,6 +37,138 @@ struct IqFrameHeader
     uint32_t sample_count;    // Number of complex samples per channel in this frame
     uint32_t fft_size;        // FFT points (e.g. 4096, or 0 if no FFT vector in this frame)
     uint32_t is_bursting;     // 1 during active TX burst, 0 during silence
+    uint32_t telemetry_bytes; // Size of trailing ExtendedDomainTelemetry struct (0 if none)
+};
+
+struct AirContact
+{
+    char callsign[16];
+    char icao[12];
+    float lat;
+    float lon;
+    float alt_ft;
+    float speed_kts;
+    float heading_deg;
+    char squawk[16];
+    float rssi_dbm;
+    uint32_t msg_count;
+    float vx;
+    float vy;
+};
+
+struct SeaContact
+{
+    char name[32];
+    char mmsi[16];
+    float lat;
+    float lon;
+    float draft_m;
+    float speed_kts;
+    float heading_deg;
+    char nav_status[32];
+    float rssi_dbm;
+    uint32_t msg_count;
+    float vx;
+    float vy;
+};
+
+struct GnssSatTelemetry
+{
+    char prn[8];
+    char constellation[16];
+    float cn0_dbhz;
+    float doppler_hz;
+    double pseudorange_m;
+    uint32_t lock_seconds;
+    uint8_t fix_status; // 0=TRACKING, 1=3D FIX, 2=RTK FIX
+};
+
+struct ModbusRegister
+{
+    uint16_t address;
+    uint16_t value;
+    char tag[24];
+    uint8_t status_flag; // 0=OK, 1=WARN, 2=ALERT
+};
+
+struct ExtendedDomainTelemetry
+{
+    uint32_t magic;   // kTelemetryMagic ('EXTL')
+    uint32_t version; // 1
+
+    // --- GNSS Security Telemetry (14 Published Topics) ---
+    float gnss_jamming_level_pct;    // Topic 1
+    float gnss_spoofing_level_pct;   // Topic 2
+    float gnss_in_band_pwr_dbm;      // Topic 3
+    float gnss_agc_gain_db;          // Topic 4
+    float gnss_pseudorange_res_m;    // Topic 6
+    float gnss_doppler_shift_res_hz; // Topic 7
+    float gnss_carrier_phase_res_cm; // Topic 8
+    float gnss_pos_dev_enu_m[3];     // Topic 9 (East, North, Up)
+    float gnss_velocity_mps[3];      // Topic 14 (Vx, Vy, Vz)
+    float gnss_pdop;                 // Topic 12
+    float gnss_pps_quant_err_ns;     // Topic 13
+    uint32_t gnss_locktime_sec;      // Topic 10
+    uint8_t gnss_tracking_status;    // Topic 10 (0=UNLOCKED, 1=2D, 2=3D, 3=RTK)
+    uint8_t gnss_sat_count;          // 12 satellites
+    GnssSatTelemetry gnss_sats[12];  // Topic 5 & 10
+    float gnss_stft_slice[128];      // Topic 11 (2D Spectrogram waterfall PSD slice)
+
+    // --- Replay & DoS Threat Analyzer (28 Published Topics) ---
+    float dos_noise_floor_dbm;       // Topic 1
+    float dos_spike_score;           // Topic 2
+    float dos_zone_burst_rate[4];    // Topic 3 (Zones A, B, C, D)
+    float dos_duty_cycle_pct;        // Topic 4
+    float replay_ibi_entropy_bits;   // Topic 5
+    float dos_reactive_jam_corr;     // Topic 6
+    float dos_swept_jam_vel;         // Topic 7
+    float dos_zone_agg_load;         // Topic 8
+    float dos_spec_occ_delta_pct;    // Topic 9
+    float replay_unmatched_pwr_dbm;  // Topic 10
+    float replay_iq_xcorr_score;     // Topic 11
+    float replay_cfo_delta_hz;       // Topic 12
+    float replay_iq_amp_imbalance_db;// Topic 13
+    float replay_iq_phase_imbal_deg; // Topic 14
+    float replay_pa_nonlinearity;    // Topic 15
+    float replay_mahalanobis_dist;   // Topic 16
+    float replay_bearing_delta_deg;  // Topic 17
+    float replay_cir_delta;          // Topic 18
+    float replay_tdoa_consistency;   // Topic 19
+    float replay_temporal_plaus_pct; // Topic 20
+    float replay_transient_delta;    // Topic 21
+    float dos_confidence_pct;        // Topic 22
+    float replay_confidence_pct;     // Topic 23
+    float combined_threat_score;     // Topic 24
+    float cooccur_multiplier;        // Topic 25
+    uint8_t alert_df_bearing_flag;   // Topic 26 (0=NORMAL, 1=ALERT)
+    uint8_t cross_zone_flag;         // Topic 27 (0=CLEAR, 1=FLAG)
+    float zone_to_zone_corr;         // Topic 28
+
+    // --- Airtime & Maritime Awareness ---
+    uint8_t air_contact_count;
+    AirContact air_contacts[6];
+    uint8_t sea_contact_count;
+    SeaContact sea_contacts[4];
+    double usrp_primary_freq_mhz;   // 1090.000
+    double usrp_secondary_freq_mhz; // 162.000
+    float usrp_rx_gain_db;          // 54.0
+    float usrp_sample_rate_msps;    // 10.0
+    uint8_t usrp_proto_mode;        // 0=DUAL, 1=ADSB, 2=UAT, 3=AIS
+    uint32_t sdr_msg_rate_per_min;  // e.g. 2410
+
+    // --- Terrestrial Decoder & SCADA Link ---
+    uint8_t terr_protocol;          // 0=DMR_TIER2, 1=TETRA, 2=P25_PH2, 3=AIRBAND_AM
+    char terr_talkgroup[16];
+    uint32_t terr_color_code;
+    float terr_ber_pct;
+    float terr_frame_sync_pct;
+    float terr_rssi_dbm;
+    float terr_audio_vu_level;
+    uint8_t scada_modbus_connected;
+    uint8_t scada_interlock_active;
+    uint8_t modbus_reg_count;
+    ModbusRegister modbus_regs[8];
+    float terr_aoa_bearing_deg;
 };
 #pragma pack(pop)
 

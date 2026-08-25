@@ -165,6 +165,84 @@ bool IqTcpSender::send_frame(uint64_t timestamp_ns, double center_freq_hz, bool 
     return true;
 }
 
+bool IqTcpSender::send_extended_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
+                                     const std::complex<float>* rx_iq,
+                                     size_t sample_count,
+                                     const float* rx_fft_db,
+                                     size_t fft_size, float iq_multiplier,
+                                     float elevation_deg, float azimuth_deg,
+                                     const ExtendedDomainTelemetry* telemetry)
+{
+    if (!is_connected_.load()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (!is_connected_.load() || sock_fd_ < 0) {
+        return false;
+    }
+
+    rx_sc16_buf_.resize(sample_count * 2);
+    if (std::abs(iq_multiplier - 1.0f) > 1e-4f) {
+        net_util::float_to_sc16_scaled(rx_iq, rx_sc16_buf_.data(), sample_count, iq_multiplier);
+    } else {
+        net_util::float_to_sc16(rx_iq, rx_sc16_buf_.data(), sample_count);
+    }
+
+    IqFrameHeader hdr;
+    hdr.magic = (telemetry != nullptr) ? kIqExtendedFrameMagic : kIqFrameMagic;
+    hdr.sequence_num = seq_num_++;
+    hdr.timestamp_ns = timestamp_ns;
+    hdr.center_freq_hz = center_freq_hz;
+    hdr.iq_multiplier = iq_multiplier;
+    hdr.elevation_deg = elevation_deg;
+    hdr.azimuth_deg = azimuth_deg;
+    hdr.sample_count = static_cast<uint32_t>(sample_count);
+    hdr.fft_size = rx_fft_db ? static_cast<uint32_t>(fft_size) : 0;
+    hdr.is_bursting = is_bursting ? 1 : 0;
+    hdr.telemetry_bytes = (telemetry != nullptr) ? static_cast<uint32_t>(sizeof(ExtendedDomainTelemetry)) : 0;
+
+    size_t iq_bytes = sample_count * sizeof(int16_t) * 2;
+    size_t fft_bytes = hdr.fft_size * sizeof(float);
+    size_t telem_bytes = hdr.telemetry_bytes;
+    size_t total_payload_bytes = sizeof(IqFrameHeader) + iq_bytes + fft_bytes + telem_bytes;
+
+    send_packet_buf_.resize(total_payload_bytes);
+    uint8_t* dst = send_packet_buf_.data();
+
+    // 1. Copy Header
+    std::memcpy(dst, &hdr, sizeof(IqFrameHeader));
+    dst += sizeof(IqFrameHeader);
+
+    // 2. Copy RX sc16
+    std::memcpy(dst, rx_sc16_buf_.data(), iq_bytes);
+    dst += iq_bytes;
+
+    // 3. Copy Optional RX FFT vector
+    if (hdr.fft_size > 0 && rx_fft_db) {
+        std::memcpy(dst, rx_fft_db, fft_bytes);
+        dst += fft_bytes;
+    }
+
+    // 4. Copy Optional Extended Domain Telemetry
+    if (telem_bytes > 0 && telemetry) {
+        std::memcpy(dst, telemetry, telem_bytes);
+        dst += telem_bytes;
+    }
+
+    if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
+        std::cerr << "[IqTcpSender] send failed, closing connection\n";
+        is_connected_ = false;
+        close(sock_fd_);
+        sock_fd_ = -1;
+        return false;
+    }
+
+    frames_sent_.fetch_add(1);
+    bytes_sent_.fetch_add(total_payload_bytes);
+    return true;
+}
+
 bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
                                   const int16_t* rx_sc16,
                                   size_t sample_count,
@@ -212,6 +290,77 @@ bool IqTcpSender::send_sc16_frame(uint64_t timestamp_ns, double center_freq_hz, 
     if (hdr.fft_size > 0 && rx_fft_db) {
         std::memcpy(dst, rx_fft_db, fft_bytes);
         dst += fft_bytes;
+    }
+
+    if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
+        std::cerr << "[IqTcpSender] send failed, closing connection\n";
+        is_connected_ = false;
+        close(sock_fd_);
+        sock_fd_ = -1;
+        return false;
+    }
+
+    frames_sent_.fetch_add(1);
+    bytes_sent_.fetch_add(total_payload_bytes);
+    return true;
+}
+
+bool IqTcpSender::send_sc16_extended_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
+                                           const int16_t* rx_sc16,
+                                           size_t sample_count,
+                                           const float* rx_fft_db,
+                                           size_t fft_size, float iq_multiplier,
+                                           float elevation_deg, float azimuth_deg,
+                                           const ExtendedDomainTelemetry* telemetry)
+{
+    if (!is_connected_.load()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    if (!is_connected_.load() || sock_fd_ < 0) {
+        return false;
+    }
+
+    IqFrameHeader hdr;
+    hdr.magic = (telemetry != nullptr) ? kIqExtendedFrameMagic : kIqFrameMagic;
+    hdr.sequence_num = seq_num_++;
+    hdr.timestamp_ns = timestamp_ns;
+    hdr.center_freq_hz = center_freq_hz;
+    hdr.iq_multiplier = iq_multiplier;
+    hdr.elevation_deg = elevation_deg;
+    hdr.azimuth_deg = azimuth_deg;
+    hdr.sample_count = static_cast<uint32_t>(sample_count);
+    hdr.fft_size = rx_fft_db ? static_cast<uint32_t>(fft_size) : 0;
+    hdr.is_bursting = is_bursting ? 1 : 0;
+    hdr.telemetry_bytes = (telemetry != nullptr) ? static_cast<uint32_t>(sizeof(ExtendedDomainTelemetry)) : 0;
+
+    size_t iq_bytes = sample_count * sizeof(int16_t) * 2;
+    size_t fft_bytes = hdr.fft_size * sizeof(float);
+    size_t telem_bytes = hdr.telemetry_bytes;
+    size_t total_payload_bytes = sizeof(IqFrameHeader) + iq_bytes + fft_bytes + telem_bytes;
+
+    send_packet_buf_.resize(total_payload_bytes);
+    uint8_t* dst = send_packet_buf_.data();
+
+    // 1. Copy Header
+    std::memcpy(dst, &hdr, sizeof(IqFrameHeader));
+    dst += sizeof(IqFrameHeader);
+
+    // 2. Copy RX sc16
+    std::memcpy(dst, rx_sc16, iq_bytes);
+    dst += iq_bytes;
+
+    // 3. Copy Optional RX FFT vector
+    if (hdr.fft_size > 0 && rx_fft_db) {
+        std::memcpy(dst, rx_fft_db, fft_bytes);
+        dst += fft_bytes;
+    }
+
+    // 4. Copy Optional Extended Domain Telemetry
+    if (telem_bytes > 0 && telemetry) {
+        std::memcpy(dst, telemetry, telem_bytes);
+        dst += telem_bytes;
     }
 
     if (!net_util::send_all(sock_fd_, send_packet_buf_.data(), total_payload_bytes)) {
@@ -333,7 +482,8 @@ void IqTcpReceiver::accept_loop()
 
 bool IqTcpReceiver::recv_frame(IqFrameHeader& out_header,
                               std::vector<int16_t>& out_rx_sc16,
-                              std::vector<float>& out_rx_fft)
+                              std::vector<float>& out_rx_fft,
+                              ExtendedDomainTelemetry* out_telemetry)
 {
     if (!is_client_connected_.load() || client_fd_ < 0) {
         return false;
@@ -346,7 +496,7 @@ bool IqTcpReceiver::recv_frame(IqFrameHeader& out_header,
         return false;
     }
 
-    if (out_header.magic != kIqFrameMagic) {
+    if (out_header.magic != kIqFrameMagic && out_header.magic != kIqExtendedFrameMagic) {
         std::cerr << "[IqTcpReceiver] Corrupt frame magic: 0x" << std::hex << out_header.magic << "\n";
         close_client();
         return false;
@@ -380,9 +530,25 @@ bool IqTcpReceiver::recv_frame(IqFrameHeader& out_header,
         out_rx_fft.clear();
     }
 
-    size_t total_frame_bytes = sizeof(IqFrameHeader) + (iq_samples * sizeof(int16_t) * 2)
-                             + (out_header.fft_size * sizeof(float));
+    // 4. Read Optional Extended Domain Telemetry
+    if (out_header.telemetry_bytes > 0) {
+        if (out_telemetry && out_header.telemetry_bytes == sizeof(ExtendedDomainTelemetry)) {
+            if (!net_util::recv_exact(client_fd_, out_telemetry, sizeof(ExtendedDomainTelemetry))) {
+                close_client();
+                return false;
+            }
+        } else {
+            // Discard telemetry bytes if caller did not request or size mismatch
+            std::vector<uint8_t> discard_buf(out_header.telemetry_bytes);
+            if (!net_util::recv_exact(client_fd_, discard_buf.data(), out_header.telemetry_bytes)) {
+                close_client();
+                return false;
+            }
+        }
+    }
+
     frames_received_.fetch_add(1);
-    bytes_received_.fetch_add(total_frame_bytes);
+    bytes_received_.fetch_add(sizeof(IqFrameHeader) + (iq_samples * sizeof(int16_t) * 2) +
+                              (out_header.fft_size * sizeof(float)) + out_header.telemetry_bytes);
     return true;
 }

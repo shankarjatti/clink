@@ -41,6 +41,20 @@ public:
                          float iq_multiplier = 1.0f,
                          float elevation_deg = 0.0f, float azimuth_deg = 0.0f);
 
+    bool send_extended_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
+                             const std::complex<float>* rx_iq, size_t sample_count,
+                             const float* rx_fft_db = nullptr, size_t fft_size = 0,
+                             float iq_multiplier = 1.0f,
+                             float elevation_deg = 0.0f, float azimuth_deg = 0.0f,
+                             const ExtendedDomainTelemetry* telemetry = nullptr);
+
+    bool send_sc16_extended_frame(uint64_t timestamp_ns, double center_freq_hz, bool is_bursting,
+                                 const int16_t* rx_sc16, size_t sample_count,
+                                 const float* rx_fft_db = nullptr, size_t fft_size = 0,
+                                 float iq_multiplier = 1.0f,
+                                 float elevation_deg = 0.0f, float azimuth_deg = 0.0f,
+                                 const ExtendedDomainTelemetry* telemetry = nullptr);
+
 private:
     void connection_loop();
     bool connect_socket();
@@ -79,7 +93,8 @@ public:
 
     bool recv_frame(IqFrameHeader& out_header,
                     std::vector<int16_t>& out_rx_sc16,
-                    std::vector<float>& out_rx_fft);
+                    std::vector<float>& out_rx_fft,
+                    ExtendedDomainTelemetry* out_telemetry = nullptr);
 
 private:
     void accept_loop();
